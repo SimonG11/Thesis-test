@@ -38,7 +38,6 @@ tasks = [
     {"id": 30, "task_name": "Project Closure Meeting", "base_effort": 15, "min": 1, "max": 2, "dependencies": [29]},
 ]
 
-
 # =============================================================================
 # Helper: Compute the schedule from a decision vector x (one worker allocation per task)
 #
@@ -60,9 +59,7 @@ def compute_schedule(x, tasks):
         alloc = int(round(x[tid - 1]))
         alloc = max(task["min"], min(task["max"], alloc))
         # Adjusted effort and duration:
-        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1)) # linear scaling
-        # new_effort = task["base_effort"] + 3 * ((alloc * ( alloc - 1))/2) # Brooks law
-        # new_effort = task["base_effort"] * (1 + (1 / task[max])) ** (alloc - 1)) # Grans law
+        new_effort = task["base_effort"] + 3 * ((alloc * ( alloc - 1))/2)
         duration = new_effort / alloc
         # Start time: maximum finish time among dependencies (or 0 if none)
         if task["dependencies"]:
@@ -76,7 +73,6 @@ def compute_schedule(x, tasks):
             "task_name": task["task_name"],
             "start": start_time,
             "finish": finish_time,
-
             "duration": duration,
             "workers": alloc
         })
@@ -102,9 +98,7 @@ def multi_objective(x):
         # Use the same rounding and clipping as in compute_schedule:
         alloc = int(round(x[tid - 1]))
         alloc = max(task["min"], min(task["max"], alloc))
-        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1)) # linear scaling
-        # new_effort = task["base_effort"] + 3 * ((alloc * ( alloc - 1))/2) # Brooks law
-        # new_effort = task["base_effort"] * (1 + (1 / task[max])) ** (alloc - 1)) # Grans law
+        new_effort = task["base_effort"] + 3 * ((alloc * ( alloc - 1))/2)
         duration = new_effort / alloc
         total_cost += duration * alloc * wage_rate
         utilizations.append(alloc / task["max"])
@@ -283,10 +277,10 @@ if __name__ == '__main__':
     avg_utils = -pareto_objs[:, 2]  # (convert back to positive utilization)
     
     # Display Pareto solutions:
-    #print("\nPareto Front (non-dominated solutions):")
-    # for idx, (sol, f_val) in enumerate(pareto_archive):
-    #    print(f"Solution {idx+1}: Workers = {np.round(sol, 0)}, Makespan = {f_val[0]:.2f}, "
-    #          f"Cost = {f_val[1]:.2f}, Avg Utilization = {(-f_val[2]):.2f}")
+    print("\nPareto Front (non-dominated solutions):")
+    for idx, (sol, f_val) in enumerate(pareto_archive):
+        print(f"Solution {idx+1}: Workers = {np.round(sol, 0)}, Makespan = {f_val[0]:.2f}, "
+              f"Cost = {f_val[1]:.2f}, Avg Utilization = {(-f_val[2]):.2f}")
     
     # -----------------------------------------------------------------------------
     # Plot the Pareto front: makespan vs. cost, with color indicating average utilization.

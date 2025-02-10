@@ -16,7 +16,7 @@ tasks = [
     {"id": 8, "task_name": "Documentation",          "base_effort": 60,  "min": 1, "max": 3, "dependencies": [2]},
     {"id": 9, "task_name": "Training",               "base_effort": 50,  "min": 1, "max": 3, "dependencies": [7, 8]},
     {"id": 10, "task_name": "Deployment",            "base_effort": 70,  "min": 2, "max": 4, "dependencies": [7, 9]},
-    {"id": 11, "task_name": "Post-Deployment Support", "base_effort": 40, "min": 1, "max": 3, "dependencies": [10]},
+    {"id": 11, "task_name": "Post-Deployment Support", "base_effort": 40,  "min": 1, "max": 3, "dependencies": [10]},
     {"id": 12, "task_name": "Project Review",        "base_effort": 30,  "min": 1, "max": 2, "dependencies": [11]},
     {"id": 13, "task_name": "Final Report",          "base_effort": 20,  "min": 1, "max": 2, "dependencies": [12]},
     {"id": 14, "task_name": "Client Feedback",       "base_effort": 25,  "min": 1, "max": 2, "dependencies": [13]},
@@ -29,7 +29,7 @@ tasks = [
     {"id": 21, "task_name": "Launch Preparation",    "base_effort": 100, "min": 2, "max": 5, "dependencies": [20]},
     {"id": 22, "task_name": "Marketing Campaign",    "base_effort": 80,  "min": 2, "max": 4, "dependencies": [21]},
     {"id": 23, "task_name": "Sales Training",        "base_effort": 60,  "min": 1, "max": 3, "dependencies": [22]},
-    {"id": 24, "task_name": "Customer Support Setup", "base_effort": 50, "min": 1, "max": 3, "dependencies": [23]},
+    {"id": 24, "task_name": "Customer Support Setup", "base_effort": 50,  "min": 1, "max": 3, "dependencies": [23]},
     {"id": 25, "task_name": "Product Launch",        "base_effort": 70,  "min": 2, "max": 4, "dependencies": [24]},
     {"id": 26, "task_name": "Post-Launch Review",    "base_effort": 40,  "min": 1, "max": 3, "dependencies": [25]},
     {"id": 27, "task_name": "Customer Feedback Analysis", "base_effort": 30, "min": 1, "max": 2, "dependencies": [26]},
@@ -38,12 +38,17 @@ tasks = [
     {"id": 30, "task_name": "Project Closure Meeting", "base_effort": 15, "min": 1, "max": 2, "dependencies": [29]},
 ]
 
+# ---------------------------
+# Global parameter for maximum total concurrent workers.
+# (You can easily change this value; default is 7.)
+max_total_workers = 7
 
 # =============================================================================
 # Helper: Compute the schedule from a decision vector x (one worker allocation per task)
 #
-# For each task, we:
-#  - Round and clip the worker allocation (x[i]) to [min, max] for that task.
+# For each task:
+#  - Snap the allocation to the nearest allowed value (full or half worker).
+#  - Then clip the worker allocation to [min, max] for that task.
 #  - Compute the "adjusted effort" as:
 #         new_effort = base_effort * (1 + (1/max) * (workers - 1))
 #  - Compute the task duration as new_effort / workers.
@@ -56,13 +61,12 @@ def compute_schedule(x, tasks):
     finish_times = {}  # task id -> finish time
     for task in tasks:
         tid = task["id"]
-        # Round and clip worker assignment:
-        alloc = int(round(x[tid - 1]))
+        # Snap to nearest half worker (allowed values: full or half workers)
+        alloc = round(x[tid - 1] * 2) / 2.0
+        # Clip to [min, max] range for this task
         alloc = max(task["min"], min(task["max"], alloc))
-        # Adjusted effort and duration:
-        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1)) # linear scaling
-        # new_effort = task["base_effort"] + 3 * ((alloc * ( alloc - 1))/2) # Brooks law
-        # new_effort = task["base_effort"] * (1 + (1 / task[max])) ** (alloc - 1)) # Grans law
+        # Adjusted effort and duration (using a simple linear scaling model)
+        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         duration = new_effort / alloc
         # Start time: maximum finish time among dependencies (or 0 if none)
         if task["dependencies"]:
@@ -76,7 +80,6 @@ def compute_schedule(x, tasks):
             "task_name": task["task_name"],
             "start": start_time,
             "finish": finish_time,
-
             "duration": duration,
             "workers": alloc
         })
@@ -91,26 +94,53 @@ def compute_schedule(x, tasks):
 #   2. Total Cost (assuming a constant wage_rate per man-hour) to be minimized.
 #   3. Negative average resource utilization (so that minimizing this is equivalent
 #      to maximizing the actual average utilization).
+#
+# Additionally, if at any time the total number of concurrent workers exceeds 
+# 'max_total_workers', a penalty is added.
 # =============================================================================
 def multi_objective(x):
     schedule, makespan = compute_schedule(x, tasks)
-    wage_rate = 50  # Assume a constant cost per man-hour
+    wage_rate = 50  # constant cost per man-hour
     total_cost = 0
     utilizations = []
     for task in tasks:
         tid = task["id"]
-        # Use the same rounding and clipping as in compute_schedule:
-        alloc = int(round(x[tid - 1]))
+        # Snap to allowed half worker values and clip to task limits
+        alloc = round(x[tid - 1] * 2) / 2.0
         alloc = max(task["min"], min(task["max"], alloc))
-        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1)) # linear scaling
-        # new_effort = task["base_effort"] + 3 * ((alloc * ( alloc - 1))/2) # Brooks law
-        # new_effort = task["base_effort"] * (1 + (1 / task[max])) ** (alloc - 1)) # Grans law
+        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         duration = new_effort / alloc
         total_cost += duration * alloc * wage_rate
         utilizations.append(alloc / task["max"])
     avg_util = np.mean(utilizations)
-    # We wish to minimize time and cost, and maximize utilization (thus minimize -avg_util)
-    return np.array([makespan, total_cost, -avg_util])
+    
+    # ---------------------------
+    # Concurrency constraint penalty:
+    # Compute the maximum concurrent workers active at any time.
+    events = []
+    for item in schedule:
+        events.append((item["start"], item["workers"]))      # task starts: add workers
+        events.append((item["finish"], -item["workers"]))      # task finishes: subtract workers
+    events.sort(key=lambda e: e[0])
+    concurrent = 0
+    max_concurrent = 0  # Initialize to the maximum number of workers allowed
+    for t_val, delta in events:
+        concurrent += delta
+        max_concurrent = max(max_concurrent, concurrent)
+    
+    # If the maximum concurrent workers exceed the allowed maximum, add a penalty.
+    penalty_factor = 10000  # Adjust this factor if needed
+    if max_concurrent > max_total_workers:
+        penalty = (max_concurrent - max_total_workers) * penalty_factor
+    else:
+        penalty = 0
+
+    # Add the penalty to both makespan and total_cost
+    makespan_penalized = makespan + penalty
+    total_cost_penalized = total_cost + penalty
+
+    # We wish to minimize makespan and cost, and maximize utilization (thus minimize -avg_util)
+    return np.array([makespan_penalized, total_cost_penalized, -avg_util])
 
 # =============================================================================
 # Pareto Dominance: In a minimization setting, solution a dominates b if
@@ -229,7 +259,6 @@ def MOHHO(objf, lb, ub, dim, SearchAgents_no, Max_iter):
     
     return archive, convergence_history
 
-
 # =============================================================================
 # Visualization: Plot a Gantt chart for a schedule.
 # =============================================================================
@@ -281,12 +310,6 @@ if __name__ == '__main__':
     makespans = pareto_objs[:, 0]
     costs = pareto_objs[:, 1]
     avg_utils = -pareto_objs[:, 2]  # (convert back to positive utilization)
-    
-    # Display Pareto solutions:
-    #print("\nPareto Front (non-dominated solutions):")
-    # for idx, (sol, f_val) in enumerate(pareto_archive):
-    #    print(f"Solution {idx+1}: Workers = {np.round(sol, 0)}, Makespan = {f_val[0]:.2f}, "
-    #          f"Cost = {f_val[1]:.2f}, Avg Utilization = {(-f_val[2]):.2f}")
     
     # -----------------------------------------------------------------------------
     # Plot the Pareto front: makespan vs. cost, with color indicating average utilization.
