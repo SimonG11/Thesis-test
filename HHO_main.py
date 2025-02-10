@@ -3,7 +3,7 @@ import math, random, time
 import matplotlib.pyplot as plt
 
 # =============================================================================
-# Define a 10-task project schedule (a simplified model)
+# Define a 30-task project schedule (a simplified model)
 # =============================================================================
 tasks = [
     {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80, "min": 2, "max": 5, "dependencies": []},
@@ -15,7 +15,27 @@ tasks = [
     {"id": 7, "task_name": "User Acceptance Testing", "base_effort": 80,  "min": 2, "max": 4, "dependencies": [6]},
     {"id": 8, "task_name": "Documentation",          "base_effort": 60,  "min": 1, "max": 3, "dependencies": [2]},
     {"id": 9, "task_name": "Training",               "base_effort": 50,  "min": 1, "max": 3, "dependencies": [7, 8]},
-    {"id": 10, "task_name": "Deployment",           "base_effort": 70,  "min": 2, "max": 4, "dependencies": [7, 9]}
+    {"id": 10, "task_name": "Deployment",            "base_effort": 70,  "min": 2, "max": 4, "dependencies": [7, 9]},
+    {"id": 11, "task_name": "Post-Deployment Support", "base_effort": 40, "min": 1, "max": 3, "dependencies": [10]},
+    {"id": 12, "task_name": "Project Review",        "base_effort": 30,  "min": 1, "max": 2, "dependencies": [11]},
+    {"id": 13, "task_name": "Final Report",          "base_effort": 20,  "min": 1, "max": 2, "dependencies": [12]},
+    {"id": 14, "task_name": "Client Feedback",       "base_effort": 25,  "min": 1, "max": 2, "dependencies": [13]},
+    {"id": 15, "task_name": "Project Closure",       "base_effort": 15,  "min": 1, "max": 2, "dependencies": [14]},
+    {"id": 16, "task_name": "Market Analysis",       "base_effort": 90,  "min": 2, "max": 5, "dependencies": []},
+    {"id": 17, "task_name": "Feasibility Study",     "base_effort": 110, "min": 3, "max": 6, "dependencies": [16]},
+    {"id": 18, "task_name": "Prototyping",           "base_effort": 130, "min": 3, "max": 7, "dependencies": [17]},
+    {"id": 19, "task_name": "Alpha Testing",         "base_effort": 140, "min": 3, "max": 7, "dependencies": [18]},
+    {"id": 20, "task_name": "Beta Testing",          "base_effort": 120, "min": 2, "max": 5, "dependencies": [19]},
+    {"id": 21, "task_name": "Launch Preparation",    "base_effort": 100, "min": 2, "max": 5, "dependencies": [20]},
+    {"id": 22, "task_name": "Marketing Campaign",    "base_effort": 80,  "min": 2, "max": 4, "dependencies": [21]},
+    {"id": 23, "task_name": "Sales Training",        "base_effort": 60,  "min": 1, "max": 3, "dependencies": [22]},
+    {"id": 24, "task_name": "Customer Support Setup", "base_effort": 50, "min": 1, "max": 3, "dependencies": [23]},
+    {"id": 25, "task_name": "Product Launch",        "base_effort": 70,  "min": 2, "max": 4, "dependencies": [24]},
+    {"id": 26, "task_name": "Post-Launch Review",    "base_effort": 40,  "min": 1, "max": 3, "dependencies": [25]},
+    {"id": 27, "task_name": "Customer Feedback Analysis", "base_effort": 30, "min": 1, "max": 2, "dependencies": [26]},
+    {"id": 28, "task_name": "Product Improvement",   "base_effort": 20,  "min": 1, "max": 2, "dependencies": [27]},
+    {"id": 29, "task_name": "Final Product Review",  "base_effort": 25,  "min": 1, "max": 2, "dependencies": [28]},
+    {"id": 30, "task_name": "Project Closure Meeting", "base_effort": 15, "min": 1, "max": 2, "dependencies": [29]},
 ]
 
 # =============================================================================
