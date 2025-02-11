@@ -10,8 +10,8 @@ This script:
   • Plots convergence curves (best makespan vs. iteration) for both methods.
   • Displays final Pareto fronts and Gantt charts for the best schedules.
   
-Author: Your Name
-Date: YYYY-MM-DD
+Author: Simon Gottschalk
+Date: 2025-02-11
 """
 
 import numpy as np
