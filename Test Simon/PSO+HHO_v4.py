@@ -7,6 +7,8 @@ This script:
     jump–improved and disturbance operations.
   • Defines a scheduling problem where each decision vector specifies worker allocations.
   • Defines three objectives: makespan, total cost, and negative average utilization.
+  • Integrates resource constraints – if several tasks run concurrently, the total number of workers allocated
+    cannot exceed the available number (as specified by the `workers` dictionary).
   • Runs both algorithms for a fixed number of iterations.
   • Plots convergence curves, Pareto fronts (in objective space), and Gantt charts for the best schedules.
   • Additionally, compares the Pareto front analyses via a combined 2D plot and a comparative 3D scatter plot.
@@ -40,49 +42,76 @@ def levy(dim):
     v = np.random.randn(dim)
     return u / (np.power(np.abs(v), 1/beta))
 
+def find_earliest_start(earliest, duration, allocated, scheduled_tasks, available):
+    """
+    Given:
+      - earliest: the earliest possible start time (from dependency constraints)
+      - duration: how long the task will run,
+      - allocated: number of workers needed for the task,
+      - scheduled_tasks: a list of already scheduled tasks (each with "start", "finish", "workers")
+      - available: maximum workers available concurrently (from the resource dictionary)
+    This function searches for the earliest time >= earliest such that during the entire interval
+    [start, start+duration], the sum of workers from overlapping tasks plus the allocated workers does not exceed available.
+    """
+    candidate = earliest
+    while True:
+        # Gather event times in the candidate window (the window endpoints and any task start/finish inside)
+        events = [candidate, candidate + duration]
+        for task in scheduled_tasks:
+            # If the task overlaps with [candidate, candidate+duration], add its start and finish times
+            if task["finish"] > candidate and task["start"] < candidate + duration:
+                if candidate < task["start"] < candidate + duration:
+                    events.append(task["start"])
+                if candidate < task["finish"] < candidate + duration:
+                    events.append(task["finish"])
+        events = sorted(set(events))
+        
+        feasible = True
+        conflict_time = None
+        # Check each sub-interval (using midpoints) for resource usage.
+        for i in range(len(events)-1):
+            mid = (events[i] + events[i+1]) / 2.0
+            # Sum up workers from all tasks that are active at time mid.
+            usage = sum(task["workers"] for task in scheduled_tasks if task["start"] <= mid < task["finish"])
+            if usage + allocated > available:
+                feasible = False
+                # Move candidate forward to the next event time where resource usage might drop.
+                conflict_time = events[i+1]
+                break
+        if feasible:
+            return candidate
+        else:
+            candidate = conflict_time
+
 # =============================================================================
 # -------------------------- Scheduling Problem Definition ------------------
 # =============================================================================
-workers = {"Developer" : 5}
+
+# Define available resources.
+workers = {"Developer": 10}
+
 # Define 30 tasks – each task has a base effort, minimum/maximum worker allocations, and dependencies.
 tasks = [
-    {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80,  "min": 2, "max": 5, "dependencies": []},
-    {"id": 2, "task_name": "System Design",          "base_effort": 100, "min": 3, "max": 6, "dependencies": [1]},
-    {"id": 3, "task_name": "Module 1 Development",   "base_effort": 150, "min": 3, "max": 7, "dependencies": [2]},
-    {"id": 4, "task_name": "Module 2 Development",   "base_effort": 150, "min": 3, "max": 7, "dependencies": [2]},
-    {"id": 5, "task_name": "Integration",            "base_effort": 120, "min": 2, "max": 5, "dependencies": [3, 4]},
-    {"id": 6, "task_name": "Testing",                "base_effort": 100, "min": 2, "max": 5, "dependencies": [5]},
-    {"id": 7, "task_name": "Acceptance Testing",     "base_effort": 80,  "min": 2, "max": 4, "dependencies": [6]},
-    {"id": 8, "task_name": "Documentation",          "base_effort": 60,  "min": 1, "max": 3, "dependencies": [2]},
-    {"id": 9, "task_name": "Training",               "base_effort": 50,  "min": 1, "max": 3, "dependencies": [7, 8]},
-    {"id": 10, "task_name": "Deployment",            "base_effort": 70,  "min": 2, "max": 4, "dependencies": [7, 9]},
-    {"id": 11, "task_name": "Deployment Support",    "base_effort": 40,  "min": 1, "max": 3, "dependencies": [10]},
-    {"id": 12, "task_name": "Project Review",        "base_effort": 30,  "min": 1, "max": 2, "dependencies": [11]},
-    {"id": 13, "task_name": "Final Report",          "base_effort": 20,  "min": 1, "max": 2, "dependencies": [12]},
-    {"id": 14, "task_name": "Client Feedback",       "base_effort": 25,  "min": 1, "max": 2, "dependencies": [13]},
-    {"id": 15, "task_name": "Project Closure",       "base_effort": 15,  "min": 1, "max": 2, "dependencies": [14]},
-    {"id": 16, "task_name": "Market Analysis",       "base_effort": 90,  "min": 2, "max": 5, "dependencies": []},
-    {"id": 17, "task_name": "Feasibility Study",     "base_effort": 110, "min": 3, "max": 6, "dependencies": [16]},
-    {"id": 18, "task_name": "Prototyping",           "base_effort": 130, "min": 3, "max": 7, "dependencies": [17]},
-    {"id": 19, "task_name": "Alpha Testing",         "base_effort": 140, "min": 3, "max": 7, "dependencies": [18]},
-    {"id": 20, "task_name": "Beta Testing",          "base_effort": 120, "min": 2, "max": 5, "dependencies": [19]},
-    {"id": 21, "task_name": "Launch Preparation",    "base_effort": 100, "min": 2, "max": 5, "dependencies": [20]},
-    {"id": 22, "task_name": "Marketing Campaign",    "base_effort": 80,  "min": 2, "max": 4, "dependencies": [21]},
-    {"id": 23, "task_name": "Sales Training",        "base_effort": 60,  "min": 1, "max": 3, "dependencies": [22]},
-    {"id": 24, "task_name": "Customer Support ",     "base_effort": 50,  "min": 1, "max": 3, "dependencies": [23]},
-    {"id": 25, "task_name": "Product Launch",        "base_effort": 70,  "min": 2, "max": 4, "dependencies": [24]},
-    {"id": 26, "task_name": "Post-Launch Review",    "base_effort": 40,  "min": 1, "max": 3, "dependencies": [25]},
-    {"id": 27, "task_name": "Customer Feedback ",    "base_effort": 30,  "min": 1, "max": 2, "dependencies": [26]},
-    {"id": 28, "task_name": "Product Improvement",   "base_effort": 20,  "min": 1, "max": 2, "dependencies": [27]},
-    {"id": 29, "task_name": "Final Product Review",  "base_effort": 25,  "min": 1, "max": 2, "dependencies": [28]},
-    {"id": 30, "task_name": "Closure Meeting",       "base_effort": 15,  "min": 1, "max": 2, "dependencies": [29]},
+    {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80,  "min": 1, "max": 14, "dependencies": []},
+    {"id": 2, "task_name": "System Design",          "base_effort": 100, "min": 1, "max": 14, "dependencies": [1]},
+    {"id": 3, "task_name": "Module 1 Development",   "base_effort": 150, "min": 1, "max": 14, "dependencies": [2]},
+    {"id": 4, "task_name": "Module 2 Development",   "base_effort": 150, "min": 1, "max": 14, "dependencies": [2]},
+    {"id": 5, "task_name": "Integration",            "base_effort": 100, "min": 1, "max": 14, "dependencies": [4]},
+    {"id": 6, "task_name": "Testing",                "base_effort": 100, "min": 1, "max": 14, "dependencies": [4]},
+    {"id": 7, "task_name": "Acceptance Testing",     "base_effort": 100,  "min": 1, "max":14, "dependencies": [4]},
+    {"id": 8, "task_name": "Documentation",          "base_effort": 100,  "min": 1, "max": 14, "dependencies": [4]},
+    {"id": 9, "task_name": "Training",               "base_effort": 50,  "min": 1, "max": 14, "dependencies": [7, 8]},
+    {"id": 10, "task_name": "Deployment",            "base_effort": 70,  "min": 2, "max": 14, "dependencies": [7, 9]}
+    
 ]
 
-def compute_schedule(x, tasks):
+def compute_schedule(x, tasks, available):
     """
-    Given a decision vector x (worker allocations for each task), compute:
-      - Start and finish times based on dependencies.
-      - Duration computed from an adjusted effort.
+    Given a decision vector x (worker allocations for each task), this function:
+      - Clamps the allocation for each task within its [min, effective_max] (where effective_max = min(task["max"], available)).
+      - Computes the adjusted effort and duration.
+      - Determines the earliest feasible start time (after dependencies) that respects resource constraints,
+        using the helper function `find_earliest_start`.
     Returns:
       - schedule: list of dictionaries (one per task)
       - makespan: overall project finish time.
@@ -91,11 +120,16 @@ def compute_schedule(x, tasks):
     finish_times = {}
     for task in tasks:
         tid = task["id"]
+        # Limit the maximum workers for the task by the available resource.
+        effective_max = min(task["max"], available)
         alloc = int(round(x[tid - 1]))
-        alloc = max(task["min"], min(task["max"], alloc))
+        alloc = max(task["min"], min(effective_max, alloc))
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         duration = new_effort / alloc
-        start_time = max([finish_times[dep] for dep in task["dependencies"]]) if task["dependencies"] else 0
+        earliest = max([finish_times[dep] for dep in task["dependencies"]]) if task["dependencies"] else 0
+        # Find the earliest start time that satisfies both dependency and resource constraints.
+        candidate_start = find_earliest_start(earliest, duration, alloc, schedule, available)
+        start_time = candidate_start
         finish_time = start_time + duration
         finish_times[tid] = finish_time
         schedule.append({
@@ -115,7 +149,7 @@ def compute_schedule(x, tasks):
 
 def objective_makespan(x):
     """Minimize project makespan."""
-    _, ms = compute_schedule(x, tasks)
+    _, ms = compute_schedule(x, tasks, workers["Developer"])
     return ms
 
 def objective_total_cost(x):
@@ -124,8 +158,9 @@ def objective_total_cost(x):
     total_cost = 0
     for task in tasks:
         tid = task["id"]
+        effective_max = min(task["max"], workers["Developer"])
         alloc = int(round(x[tid - 1]))
-        alloc = max(task["min"], min(task["max"], alloc))
+        alloc = max(task["min"], min(effective_max, alloc))
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         duration = new_effort / alloc
         total_cost += duration * alloc * wage_rate
@@ -139,8 +174,9 @@ def objective_neg_utilization(x):
     utils = []
     for task in tasks:
         tid = task["id"]
+        effective_max = min(task["max"], workers["Developer"])
         alloc = int(round(x[tid - 1]))
-        alloc = max(task["min"], min(task["max"], alloc))
+        alloc = max(task["min"], min(effective_max, alloc))
         utils.append(alloc / task["max"])
     return -np.mean(utils)
 
@@ -263,7 +299,7 @@ def MOHHO_with_progress(objf, lb, ub, dim, SearchAgents_no, Max_iter):
 # =============================================================================
 
 class PSO:
-    def __init__(self, dim, lb, ub, obj_funcs, pop=10, c2=1.05, w_max=0.9, w_min=0.4,
+    def __init__(self, dim, lb, ub, obj_funcs, pop=30, c2=1.05, w_max=0.9, w_min=0.4,
                  disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20):
         self.dim = dim
         self.lb = np.array(lb)
@@ -274,7 +310,7 @@ class PSO:
         self.w_max = w_max
         self.w_min = w_min
         self.iteration = 0
-        self.max_iter = 100  # adjust as needed
+        self.max_iter = 200  # adjust as needed
         self.vmax = self.ub - self.lb
         self.integer = [True]*dim  # decision variables are integer (workers)
         # Initialize swarm: positions and velocities (each particle as a dict)
@@ -447,21 +483,21 @@ if __name__ == '__main__':
     lb = np.array([task["min"] for task in tasks])
     ub = np.array([task["max"] for task in tasks])
     
-    # Compute a baseline schedule (using midpoint allocation)
+    # Compute a baseline schedule (using midpoint allocation) under resource constraints.
     baseline_x = (lb + ub) / 2.0
-    baseline_schedule, baseline_makespan = compute_schedule(baseline_x, tasks)
+    baseline_schedule, baseline_makespan = compute_schedule(baseline_x, tasks, workers["Developer"])
     print("Baseline Makespan (hours):", baseline_makespan)
     plot_gantt(baseline_schedule, "Baseline Schedule")
     
     # ----------------------- Run HHO -----------------------
-    hho_iterations = 200
-    SearchAgents_no = 100
+    hho_iterations = 100
+    SearchAgents_no = 10
     archive_hho, hho_progress = MOHHO_with_progress(multi_objective, lb, ub, dim, SearchAgents_no, hho_iterations)
     if archive_hho:
         best_particle_hho = min(archive_hho, key=lambda entry: entry[1][0])
         best_solution_hho = best_particle_hho[0]
         best_makespan_hho = best_particle_hho[1][0]
-        best_schedule_hho, _ = compute_schedule(best_solution_hho, tasks)
+        best_schedule_hho, _ = compute_schedule(best_solution_hho, tasks, workers["Developer"])
         print("[HHO] Best Makespan (hours):", best_makespan_hho)
     else:
         best_schedule_hho = None
@@ -478,7 +514,7 @@ if __name__ == '__main__':
     print(f"Number of archive (non-dominated) solutions found by PSO: {len(archive_pso)}")
     best_arch = min(archive_pso, key=lambda entry: entry[1][0])
     best_solution_pso = best_arch[0]
-    best_schedule_pso, best_makespan_pso = compute_schedule(best_solution_pso, tasks)
+    best_schedule_pso, best_makespan_pso = compute_schedule(best_solution_pso, tasks, workers["Developer"])
     print("\n[PSO] Best Makespan (hours):", best_makespan_pso)
     
     # ----------------- Convergence Comparison Plot -----------------
