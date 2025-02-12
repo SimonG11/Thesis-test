@@ -25,7 +25,7 @@ def compute_schedule(x, tasks):
     for task in tasks:
         tid = task["id"]
         # Round and clip worker allocation:
-        alloc = int(round(x[tid - 1]))
+        alloc = round(x[tid - 1] * 2) / 2 # New rounding technuique to allow 0.5-steps in allocation
         alloc = max(task["min"], min(task["max"], alloc))
         # Adjusted effort and duration:
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
@@ -61,7 +61,7 @@ def multi_objective(x):
     utilizations = []
     for task in tasks:
         tid = task["id"]
-        alloc = int(round(x[tid - 1]))
+        alloc = round(x[tid - 1] * 2) / 2
         alloc = max(task["min"], min(task["max"], alloc))
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         # new_effort = task["base_effort"] + 3 * ((alloc * ( alloc - 1))/2) # Brooks law

@@ -10,6 +10,7 @@ from HHO import MOHHO
 from vizualization import plot_gantt
 
 def main():
+
     # Decision space: one worker allocation per task (dimension = number of tasks)
     dim = len(tasks)
     lb = np.array([task["min"] for task in tasks])
@@ -46,6 +47,8 @@ def main():
     plt.show()
     
     # Optionally, pick one Pareto solution to display its detailed schedule.
+    print("--------------------------")
+    print("Best makespan solution")
     best_index = np.argmin(makespans)
     best_solution = pareto_archive[best_index][0]
     best_schedule, best_makespan = compute_schedule(best_solution, tasks)
