@@ -1,5 +1,11 @@
 # project_schedule.py
-
+mini = [
+    {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80, "min": 2, "max": 5, "dependencies": []},
+    {"id": 2, "task_name": "System Design",          "base_effort": 100, "min": 1, "max": 6, "dependencies": [1]},
+    {"id": 3, "task_name": "Module 1 Development",   "base_effort": 150, "min": 1, "max": 7, "dependencies": [2]},
+    {"id": 4, "task_name": "Module 2 Development",   "base_effort": 150, "min": 1, "max": 7, "dependencies": [2]},
+    {"id": 5, "task_name": "Integration",            "base_effort": 120, "min": 1, "max": 5, "dependencies": [3]}
+]
 tasks = [
     {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80, "min": 2, "max": 5, "dependencies": []},
     {"id": 2, "task_name": "System Design",          "base_effort": 100, "min": 3, "max": 6, "dependencies": [1]},
