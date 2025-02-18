@@ -755,8 +755,8 @@ def run_experiments(runs=10, use_random_instance=False, num_tasks=10):
         results["Baseline"]["makespan"].append(base_ms)
         
         # MOHHO
-        hho_iter = 100
-        SearchAgents_no = 10
+        hho_iter = 200
+        SearchAgents_no = 30
         archive_hho, _ = MOHHO_with_progress(multi_objective, lb_current, ub_current, dim, SearchAgents_no, hho_iter)
         if archive_hho:
             best_particle_hho = min(archive_hho, key=lambda entry: entry[1][0])
@@ -769,9 +769,9 @@ def run_experiments(runs=10, use_random_instance=False, num_tasks=10):
         # PSO
         objectives = [objective_makespan, objective_total_cost, objective_neg_utilization]
         optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
-                        pop=10, c2=1.05, w_max=0.9, w_min=0.4,
+                        pop=30, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
-        _ = optimizer.run(max_iter=100)
+        _ = optimizer.run(max_iter=200)
         archive_pso = optimizer.archive
         if archive_pso:
             best_arch = min(archive_pso, key=lambda entry: entry[1][0])
@@ -782,8 +782,8 @@ def run_experiments(runs=10, use_random_instance=False, num_tasks=10):
         archives_all["PSO"].append(archive_pso)
         
         # MOACO
-        ant_count = 10
-        moaco_iter = 100
+        ant_count = 30
+        moaco_iter = 200
         archive_moaco, _ = MOACO_improved(multi_objective, current_tasks, workers, lb_current, ub_current,
                                           ant_count, moaco_iter, alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
         if archive_moaco:
