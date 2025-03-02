@@ -766,7 +766,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
 
         # Adaptive MOHHO
         hho_iter = 30
-        search_agents_no = 10
+        search_agents_no = 5
         archive_hho, _ = MOHHO_with_progress(lambda x: multi_objective(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
         best_ms_hho = min(archive_hho, key=lambda entry: entry[1][0])[1][0] if archive_hho else None
         results["MOHHO"]["best_makespan"].append(best_ms_hho)
@@ -777,7 +777,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                       lambda x: objective_total_cost(x, model),
                       lambda x: objective_neg_utilization(x, model)]
         optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
-                        pop=10, c2=1.05, w_max=0.9, w_min=0.4,
+                        pop=5, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
         _ = optimizer.run(max_iter=30)
         archive_pso = optimizer.archive
@@ -786,7 +786,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         archives_all["PSO"].append(archive_pso)
 
         # Improved MOACO
-        ant_count = 10
+        ant_count = 5
         moaco_iter = 30
         archive_moaco, _ = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
                                           lb_current, ub_current, ant_count, moaco_iter,
