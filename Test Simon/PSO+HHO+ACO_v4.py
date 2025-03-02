@@ -62,35 +62,58 @@ def levy(dim: int) -> np.ndarray:
 
 def find_earliest_start(earliest: float, duration: float, allocated: int,
                         scheduled_tasks: List[Dict[str, Any]],
-                        capacity: int, resource: str) -> float:
+                        capacity: int, resource: str, epsilon: float = 1e-6) -> float:
     """
-    Find the earliest start time for a task given dependency and resource capacity constraints.
-    This uses the Serial Schedule Generation Scheme (SSGS) to ensure an active schedule.
+    Robustly determine the earliest start time for a task, given resource constraints.
+    
+    Instead of iterating indefinitely, this function:
+      1. Gathers candidate times (dependency earliest, and all task start/finish times >= earliest)
+         for tasks using the given resource.
+      2. For each candidate time, checks whether the interval [t, t+duration] satisfies the capacity constraint.
+      3. If a candidate is feasible, returns it. Otherwise, it returns the last finish time plus epsilon.
+      
+    This method guarantees a finite search, and if no gap is found, it schedules immediately after the last task.
     """
-    candidate = earliest
-    while True:
-        events = [candidate, candidate + duration]
-        for task in scheduled_tasks:
-            if task.get("resource") != resource:
-                continue
-            # Add task start and finish times if overlapping candidate interval
-            if task["finish"] > candidate and task["start"] < candidate + duration:
+    # Filter tasks for the relevant resource.
+    tasks_r = [t for t in scheduled_tasks if t.get("resource") == resource]
+
+    # If no tasks exist on this resource, the earliest time is feasible.
+    if not tasks_r:
+        return earliest
+
+    # Build a set of candidate times: include 'earliest' and any task start/finish time >= earliest.
+    candidate_times = {earliest}
+    for task in tasks_r:
+        if task["start"] >= earliest:
+            candidate_times.add(task["start"])
+        if task["finish"] >= earliest:
+            candidate_times.add(task["finish"])
+    candidate_times = sorted(candidate_times)
+
+    # For each candidate time, check if the entire interval [t, t+duration] is feasible.
+    for t in candidate_times:
+        # Build events within the interval from candidate t to t+duration.
+        events = [t, t + duration]
+        for task in tasks_r:
+            # Only consider tasks that overlap with the candidate interval.
+            if task["finish"] > t and task["start"] < t + duration:
                 events.extend([task["start"], task["finish"]])
         events = sorted(set(events))
+        
         feasible = True
-        conflict_time = None
+        # Check capacity in each subinterval defined by these events.
         for i in range(len(events) - 1):
             mid = (events[i] + events[i+1]) / 2.0
-            usage = sum(task["workers"] for task in scheduled_tasks 
-                        if task.get("resource") == resource and task["start"] <= mid < task["finish"])
+            usage = sum(task["workers"] for task in tasks_r if task["start"] <= mid < task["finish"])
             if usage + allocated > capacity:
                 feasible = False
-                conflict_time = events[i+1]
                 break
         if feasible:
-            return candidate
-        else:
-            candidate = conflict_time
+            return t
+
+    # Fallback: if no candidate was feasible, return just after the last finish time.
+    last_finish = max(task["finish"] for task in tasks_r)
+    return last_finish + epsilon
 
 # =============================================================================
 # -------------------------- RCPSP Model Definition -------------------------
@@ -804,7 +827,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             results[alg]["spread"].append(sp)
 
     # Construct an approximate true Pareto front (union of all archives)
-    union_archive = [entry for alg in archives_all for entry in archives_all[alg]]
+    union_archive = [entry for alg in archives_all for archive in archives_all[alg] for entry in archive]
     true_pareto = []
     for sol, obj in union_archive:
         if not any(dominates(other_obj, obj) for _, other_obj in union_archive if not np.array_equal(other_obj, obj)):
