@@ -904,7 +904,7 @@ def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, m
 # =============================================================================
 
 if __name__ == '__main__':
-    runs = 1  # Number of independent runs (increase for statistical significance)
+    runs = 10  # Number of independent runs (increase for statistical significance)
     use_random_instance = False  # Set True to test on random instances for scalability
     num_tasks = 10
 
