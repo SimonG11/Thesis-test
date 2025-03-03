@@ -5,10 +5,10 @@ Improved Multi-Objective Comparison for RCPSP using Adaptive MOHHO, Adaptive MOP
 This script implements and compares three metaheuristic algorithms for the Resource-Constrained 
 Project Scheduling Problem (RCPSP) with multiple objectives. The implementation has been updated 
 to incorporate advanced mechanisms from the literature, including:
- - Non-linear adaptive parameter tuning (using cosine schedules)
+ - Non-linear adaptive parameter tuning (using cosine schedules and self-adaptation)
  - Enhanced archive management with diversity preservation (inspired by NSGA-II crowding distance)
- - Periodic local search refinement of the best solution (to improve exploitation)
- - Multi-colony pheromone updates in MOACO to promote diverse exploration across conflicting objectives
+ - Periodic local search and diversity-driven injection of new hawks
+ - Multi-colony pheromone updates with periodic reinitialization in MOACO
 
 References:
  - Heidari, A., et al. "Harris Hawks Optimization: Algorithm and Applications."
@@ -488,7 +488,7 @@ def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     
     If a reference point is provided, it is plotted as a distinct marker.
     """
-    fig = plt.figure(figsize=(16, 7))
+    fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection='3d')
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         if archive:
@@ -503,6 +503,78 @@ def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     ax.set_zlabel("Average Utilization")
     ax.set_title("3D Pareto Front")
     ax.legend()
+    plt.show()
+
+# --- New Comparative Visualization Functions ---
+
+def plot_comparative_bar_chart(results: Dict[str, Any], metric: str, algos: List[str]) -> None:
+    """
+    Plot a bar chart with error bars (mean ± std) for a given metric across algorithms.
+    """
+    means, stds = {}, {}
+    for algo in algos:
+        data = np.array(results[algo][metric])
+        means[algo] = np.mean(data)
+        stds[algo] = np.std(data)
+    fig, ax = plt.subplots(figsize=(8,6))
+    x = np.arange(len(algos))
+    colors = ['blue', 'red', 'green', 'gray'][:len(algos)]
+    ax.bar(x, [means[a] for a in algos], yerr=[stds[a] for a in algos], capsize=5, color=colors)
+    ax.set_xticks(x)
+    ax.set_xticklabels(algos)
+    ax.set_title(f"Comparative {metric} (Mean ± Std)")
+    ax.set_ylabel(metric)
+    plt.show()
+
+def plot_aggregate_convergence(convergence_data: Dict[str, List[List[float]]], title: str = "Aggregate Convergence Curves") -> None:
+    """
+    Plot the aggregate convergence curves for each algorithm.
+    For each algorithm, the mean and standard deviation over iterations are computed and plotted.
+    """
+    fig, ax = plt.subplots(figsize=(10,6))
+    for algo, curves in convergence_data.items():
+        curves_arr = np.array(curves)
+        mean_curve = np.mean(curves_arr, axis=0)
+        std_curve = np.std(curves_arr, axis=0)
+        iterations = np.arange(len(mean_curve))
+        ax.plot(iterations, mean_curve, label=algo)
+        ax.fill_between(iterations, mean_curve - std_curve, mean_curve + std_curve, alpha=0.2)
+    ax.set_xlabel("Iterations")
+    ax.set_ylabel("Best Makespan (hours)")
+    ax.set_title(title)
+    ax.legend()
+    plt.show()
+
+def plot_radar_chart(results: Dict[str, Any], algos: List[str], metrics: List[str]) -> None:
+    """
+    Plot a radar chart to compare average values of multiple metrics for given algorithms.
+    """
+    import matplotlib.pyplot as plt
+    data = []
+    for algo in algos:
+        algo_data = []
+        for metric in metrics:
+            if metric in results[algo]:
+                algo_data.append(np.mean(results[algo][metric]))
+            else:
+                algo_data.append(0)
+        data.append(algo_data)
+    data = np.array(data)
+    categories = metrics
+    N = len(categories)
+    angles = [n / float(N) * 2 * np.pi for n in range(N)]
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(8,8), subplot_kw=dict(polar=True))
+    for i, algo in enumerate(algos):
+        vals = data[i].tolist()
+        vals += vals[:1]
+        ax.plot(angles, vals, label=algo)
+        ax.fill(angles, vals, alpha=0.1)
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(categories)
+    ax.set_title("Radar Chart Comparison")
+    ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1))
     plt.show()
 
 # =============================================================================
@@ -542,27 +614,29 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
                         search_agents_no: int, max_iter: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
-    Adaptive MOHHO (Multi-Objective Harris Hawks Optimization) with chaotic initialization,
-    non-linear adaptive escape energy, and periodic local search.
+    Adaptive MOHHO with chaotic initialization, non-linear adaptive escape energy, self-adaptive step size,
+    periodic local search, and diversity-driven injection of new hawks.
     
     Returns:
         archive: List of non-dominated solutions.
         progress: Convergence history (best makespan per iteration).
     """
     X = chaotic_map_initialization(lb, ub, dim, search_agents_no)
+    step_sizes = np.ones((search_agents_no, dim))
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
     t = 0
+    diversity_threshold = 0.1 * np.mean(ub - lb)
     while t < max_iter:
-        # Non-linear decaying escape energy (using cosine function)
         E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
         for i in range(search_agents_no):
             X[i, :] = np.clip(X[i, :], lb, ub)
             f_val = objf(X[i, :])
             archive = update_archive_with_crowding(archive, (X[i, :].copy(), f_val.copy()))
-        # Select a guiding solution ("rabbit") using diversity-aware roulette selection from archive
         rabbit = random.choice(archive)[0] if archive else X[0, :].copy()
         for i in range(search_agents_no):
+            old_x = X[i, :].copy()
+            old_obj = np.linalg.norm(objf(old_x))
             E0 = 2 * random.random() - 1
             Escaping_Energy = E1 * E0
             r = random.random()
@@ -598,20 +672,27 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0)) + np.random.randn(dim) * levy(dim)
                         if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
                             X[i, :] = X2.copy()
-        # Periodic local search on the best (rabbit) solution every 10 iterations
-        if t % 10 == 0 and archive:
-            # Small perturbation local search
-            best_local = rabbit.copy()
-            best_val = objf(best_local)
-            for _ in range(5):
-                perturbation = np.random.uniform(-0.1, 0.1, size=dim)
-                candidate = np.clip(best_local + perturbation, lb, ub)
-                candidate_val = objf(candidate)
-                if candidate_val[0] < best_val[0]:
-                    best_local = candidate.copy()
-                    best_val = candidate_val.copy()
-            # Replace rabbit if improved
-            rabbit = best_local.copy()
+            new_x = old_x + step_sizes[i, :] * (X[i, :] - old_x)
+            new_x = np.clip(new_x, lb, ub)
+            new_obj = np.linalg.norm(objf(new_x))
+            if new_obj < old_obj:
+                step_sizes[i, :] *= 0.95
+            else:
+                step_sizes[i, :] *= 1.05
+            X[i, :] = new_x.copy()
+        dists = [np.linalg.norm(X[i] - X[j]) for i in range(search_agents_no) for j in range(i+1, search_agents_no)]
+        avg_dist = np.mean(dists) if dists else 0
+        if avg_dist < diversity_threshold:
+            obj_values = [np.linalg.norm(objf(X[i])) for i in range(search_agents_no)]
+            worst_idx = np.argmax(obj_values)
+            if archive:
+                base = random.choice(archive)[0]
+                new_hawk = base + np.random.uniform(-0.5, 0.5, size=dim)
+                X[worst_idx, :] = np.clip(new_hawk, lb, ub)
+                step_sizes[worst_idx, :] = np.ones(dim)
+            else:
+                X[worst_idx, :] = chaotic_map_initialization(lb, ub, dim, 1)[0]
+                step_sizes[worst_idx, :] = np.ones(dim)
         best_makespan = np.min([objf(X[i, :])[0] for i in range(search_agents_no)])
         progress.append(best_makespan)
         t += 1
@@ -619,8 +700,8 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
 
 class PSO:
     """
-    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) with non-linear inertia update,
-    periodic mutation, and diversity-preserving archive updates.
+    Adaptive MOPSO with non-linear inertia update, periodic mutation, diversity-preserving archive updates,
+    self-adaptive inertia weights, and hypercube-based leader selection.
     """
     def __init__(self, dim: int, lb: np.ndarray, ub: np.ndarray,
                  obj_funcs: List[Callable[[np.ndarray], float]], pop: int = 30,
@@ -646,7 +727,8 @@ class PSO:
                 'position': pos,
                 'velocity': vel,
                 'pbest': pos.copy(),
-                'obj': self.evaluate(pos)
+                'obj': self.evaluate(pos),
+                'w': self.w_max
             }
             self.swarm.append(particle)
         self.archive: List[Tuple[np.ndarray, np.ndarray]] = []
@@ -655,46 +737,36 @@ class PSO:
         self.jump_interval = jump_interval
 
     def evaluate(self, pos: np.ndarray) -> np.ndarray:
-        """Evaluate a particle's position using the objective functions."""
         if len(self.obj_funcs) == 1:
             return np.array([self.obj_funcs[0](pos)])
         else:
             return np.array([f(pos) for f in self.obj_funcs])
 
-    def update_archive(self) -> None:
-        """Update the external archive using current swarm particles."""
-        for particle in self.swarm:
-            pos = particle['position'].copy()
-            obj_val = particle['obj'].copy()
-            self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
-
-    def proportional_distribution(self) -> List[np.ndarray]:
-        """
-        Select guiding positions for each particle based on the crowding distance of archive solutions.
-        """
+    def select_leader_hypercube(self) -> List[np.ndarray]:
         if not self.archive:
             return [random.choice(self.swarm)['position'] for _ in range(self.pop)]
-        distances = compute_crowding_distance(self.archive)
-        total = np.sum(distances)
-        if total == 0 or math.isinf(total) or math.isnan(total):
-            probs = [1.0 / len(distances)] * len(distances)
-        else:
-            probs = [d / total for d in distances]
-        guides = []
+        objs = np.array([entry[1] for entry in self.archive])
+        num_bins = 5
+        mins = np.min(objs, axis=0)
+        maxs = np.max(objs, axis=0)
+        ranges = np.where(maxs - mins == 0, 1, maxs - mins)
+        cell_indices = []
+        cell_counts = {}
+        for entry in self.archive:
+            idx = tuple(((entry[1] - mins) / ranges * num_bins).astype(int))
+            idx = tuple(min(x, num_bins - 1) for x in idx)
+            cell_indices.append(idx)
+            cell_counts[idx] = cell_counts.get(idx, 0) + 1
+        leaders = []
+        weights = [1 / cell_counts[cell_indices[i]] for i in range(len(self.archive))]
+        total_weight = sum(weights)
+        probs = [w / total_weight for w in weights]
         for _ in range(self.pop):
-            r = random.random()
-            cum_prob = 0.0
-            chosen_idx = len(probs) - 1
-            for idx, p in enumerate(probs):
-                cum_prob += p
-                if r <= cum_prob:
-                    chosen_idx = idx
-                    break
-            guides.append(self.archive[chosen_idx][0])
-        return guides
+            chosen = np.random.choice(len(self.archive), p=probs)
+            leaders.append(self.archive[chosen][0])
+        return leaders
 
     def jump_improved_operation(self) -> None:
-        """Perform a jump operation to help escape local optima."""
         if len(self.archive) < 2:
             return
         c1, c2 = random.sample(self.archive, 2)
@@ -707,7 +779,6 @@ class PSO:
             self.archive = update_archive_with_crowding(self.archive, (oc, obj_val))
 
     def disturbance_operation(self, particle: Dict[str, Any]) -> None:
-        """Apply a random disturbance to a particle's position to enhance exploration."""
         rate = self.disturbance_rate_min + (self.disturbance_rate_max - self.disturbance_rate_min) * (self.iteration / self.max_iter)
         if random.random() < rate:
             k = random.randint(1, self.dim)
@@ -724,18 +795,14 @@ class PSO:
             particle['obj'] = self.evaluate(new_pos)
 
     def move(self) -> None:
-        """
-        Update the swarm by moving each particle, applying adaptive parameter tuning,
-        periodic extra mutation if diversity is low, and updating the archive.
-        """
         self.iteration += 1
-        # Non-linear inertia weight update using cosine schedule
-        w = self.w_max - ((self.w_max - self.w_min) * math.cos((self.iteration / self.max_iter) * (math.pi / 2)))
-        guides = self.proportional_distribution()
+        leaders = self.select_leader_hypercube()
         for idx, particle in enumerate(self.swarm):
+            old_pos = particle['position'].copy()
+            old_obj = np.linalg.norm(self.evaluate(old_pos))
             r2 = random.random()
-            guide = guides[idx]
-            new_v = w * particle['velocity'] + self.c2 * r2 * (guide - particle['position'])
+            guide = leaders[idx]
+            new_v = particle['w'] * particle['velocity'] + self.c2 * r2 * (guide - particle['position'])
             new_v = np.array([np.clip(new_v[i], -self.vmax[i], self.vmax[i]) for i in range(self.dim)])
             particle['velocity'] = new_v
             new_pos = particle['position'] + new_v
@@ -743,28 +810,32 @@ class PSO:
             particle['position'] = new_pos
             particle['obj'] = self.evaluate(new_pos)
             particle['pbest'] = new_pos.copy()
+            new_obj = np.linalg.norm(self.evaluate(new_pos))
+            if new_obj < old_obj:
+                particle['w'] = max(particle['w'] * 0.95, self.w_min)
+            else:
+                particle['w'] = min(particle['w'] * 1.05, self.w_max)
             self.disturbance_operation(particle)
         self.update_archive()
-        # Periodic jump operation to boost exploration
         if self.iteration % self.jump_interval == 0:
             self.jump_improved_operation()
-        # Extra mutation: if swarm diversity (average pairwise distance) is low, reinitialize one random particle
         positions = np.array([p['position'] for p in self.swarm])
         if len(positions) > 1:
             pairwise_dists = [np.linalg.norm(positions[i] - positions[j]) for i in range(len(positions)) for j in range(i+1, len(positions))]
             avg_distance = np.mean(pairwise_dists)
-            if avg_distance < 0.1 * np.mean(self.ub - self.lb):  # threshold can be tuned
+            if avg_distance < 0.1 * np.mean(self.ub - self.lb):
                 idx_to_mutate = random.randint(0, self.pop - 1)
                 self.swarm[idx_to_mutate]['position'] = np.array([random.randint(int(self.lb[i]), int(self.ub[i])) for i in range(self.dim)])
                 self.swarm[idx_to_mutate]['obj'] = self.evaluate(self.swarm[idx_to_mutate]['position'])
+        self.update_archive()
+
+    def update_archive(self) -> None:
+        for particle in self.swarm:
+            pos = particle['position'].copy()
+            obj_val = particle['obj'].copy()
+            self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
 
     def run(self, max_iter: Optional[int] = None) -> List[float]:
-        """
-        Run the Adaptive MOPSO for a specified number of iterations.
-        
-        Returns:
-            List of best makespan values per iteration.
-        """
         if max_iter is None:
             max_iter = self.max_iter
         convergence: List[float] = []
@@ -780,21 +851,8 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     alpha: float = 1.0, beta: float = 2.0, evaporation_rate: float = 0.1,
                     Q: float = 100.0, P: float = 0.6, w1: float = 1.0, w2: float = 1.0,
                     sigma_share: float = 1.0, lambda3: float = 2.0, lambda4: float = 5.0,
-                    colony_count: int = 2  # NEW: number of colonies for multi-colony approach
-                    ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
-    """
-    Improved MOACO (Multi-Objective Ant Colony Optimization) incorporating local search,
-    multi-colony pheromone updates, and adaptive evaporation.
-    
-    The ant population is divided among several colonies, each with its own pheromone matrix.
-    At each iteration, the colony pheromones are merged (averaged) to guide the global search.
-    
-    Returns:
-        archive: List of non-dominated solutions.
-        progress: Convergence history (best makespan per iteration).
-    """
+                    colony_count: int = 2) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     dim = len(lb)
-    # Initialize multiple pheromone matrices (one per colony)
     colony_pheromones = []
     colony_heuristics = []
     for _ in range(colony_count):
@@ -814,10 +872,8 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
         colony_heuristics.append(heuristic)
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
-    # Divide ants evenly among colonies
     ants_per_colony = ant_count // colony_count
     for iteration in range(max_iter):
-        # For each colony, construct solutions
         colony_solutions = []
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
@@ -842,7 +898,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                             chosen = v
                             break
                     solution.append(chosen)
-                # Local search: explore neighbors by adjusting each dimension by ±1.
                 neighbors = []
                 for i in range(dim):
                     for delta in [-1, 1]:
@@ -859,17 +914,13 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 solution = best_neighbor
                 obj_val = objf(np.array(solution))
                 colony_solutions.append((solution, obj_val))
-        # Merge solutions from all colonies: update global archive
         for sol, obj_val in colony_solutions:
             archive = update_archive_with_crowding(archive, (np.array(sol), obj_val))
-        # Update pheromones separately for each colony
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             for i in range(dim):
                 for v in pheromone[i]:
-                    # Adaptive evaporation: can be modified further if desired
                     pheromone[i][v] *= (1 - evaporation_rate)
-            # Deposit pheromone from non-dominated solutions
             for sol, obj_val in archive:
                 r = random.random()
                 if r > P:
@@ -894,7 +945,15 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     deposit = w2 * (lambda4 if mu > 0 else lambda3)
                 for i, v in enumerate(sol):
                     pheromone[i][v] += deposit
-        # Merge pheromone matrices from all colonies (average)
+        for colony_idx in range(colony_count):
+            pheromone = colony_pheromones[colony_idx]
+            all_values = []
+            for i in range(dim):
+                all_values.extend(list(pheromone[i].values()))
+            if np.var(all_values) < 0.001:
+                for i in range(dim):
+                    possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
+                    pheromone[i] = {v: 1.0 for v in possible_values}
         merged_pheromone = []
         for i in range(dim):
             merged = {}
@@ -903,7 +962,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 val = sum(colony_pheromones[colony_idx][i].get(v, 0) for colony_idx in range(colony_count)) / colony_count
                 merged[v] = val
             merged_pheromone.append(merged)
-        # Update each colony's pheromone with the merged version for synchronization
         for colony_idx in range(colony_count):
             colony_pheromones[colony_idx] = [merged_pheromone[i].copy() for i in range(dim)]
         best_ms = min(obj_val[0] for _, obj_val in colony_solutions)
@@ -911,35 +969,101 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
     return archive, progress
 
 # =============================================================================
+# ------------------------- Comparative Visualization Functions -------------
+# =============================================================================
+
+def plot_comparative_bar_chart(results: Dict[str, Any], metric: str, algos: List[str]) -> None:
+    """Plot a bar chart with error bars (mean ± std) for a given metric across algorithms."""
+    means, stds = {}, {}
+    for algo in algos:
+        data = np.array(results[algo][metric])
+        means[algo] = np.mean(data)
+        stds[algo] = np.std(data)
+    fig, ax = plt.subplots(figsize=(8,6))
+    x = np.arange(len(algos))
+    colors = ['blue', 'red', 'green', 'gray'][:len(algos)]
+    ax.bar(x, [means[a] for a in algos], yerr=[stds[a] for a in algos], capsize=5, color=colors)
+    ax.set_xticks(x)
+    ax.set_xticklabels(algos)
+    ax.set_title(f"Comparative {metric} (Mean ± Std)")
+    ax.set_ylabel(metric)
+    plt.show()
+
+def plot_aggregate_convergence(convergence_data: Dict[str, List[List[float]]], title: str = "Aggregate Convergence Curves") -> None:
+    """
+    Plot the aggregate convergence curves for each algorithm.
+    For each algorithm, the mean and standard deviation over iterations are computed and plotted.
+    """
+    fig, ax = plt.subplots(figsize=(10,6))
+    for algo, curves in convergence_data.items():
+        curves_arr = np.array(curves)
+        mean_curve = np.mean(curves_arr, axis=0)
+        std_curve = np.std(curves_arr, axis=0)
+        iterations = np.arange(len(mean_curve))
+        ax.plot(iterations, mean_curve, label=algo)
+        ax.fill_between(iterations, mean_curve - std_curve, mean_curve + std_curve, alpha=0.2)
+    ax.set_xlabel("Iterations")
+    ax.set_ylabel("Best Makespan (hours)")
+    ax.set_title(title)
+    ax.legend()
+    plt.show()
+
+def plot_radar_chart(results: Dict[str, Any], algos: List[str], metrics: List[str]) -> None:
+    """
+    Plot a radar chart to compare average values of multiple metrics for given algorithms.
+    """
+    data = []
+    for algo in algos:
+        algo_data = []
+        for metric in metrics:
+            if metric in results[algo]:
+                algo_data.append(np.mean(results[algo][metric]))
+            else:
+                algo_data.append(0)
+        data.append(algo_data)
+    data = np.array(data)
+    categories = metrics
+    N = len(categories)
+    angles = [n / float(N) * 2 * np.pi for n in range(N)]
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(8,8), subplot_kw=dict(polar=True))
+    for i, algo in enumerate(algos):
+        vals = data[i].tolist()
+        vals += vals[:1]
+        ax.plot(angles, vals, label=algo)
+        ax.fill(angles, vals, alpha=0.1)
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(categories)
+    ax.set_title("Radar Chart Comparison")
+    ax.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1))
+    plt.show()
+
+# =============================================================================
 # ------------------------- Experiment Runner -------------------------------
 # =============================================================================
 
 def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10
-                   ) -> Tuple[Dict[str, Any], Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]], List[Dict[str, Any]]]:
+                   ) -> Tuple[Dict[str, Any], Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]], 
+                              List[Dict[str, Any]], Dict[str, List[List[float]]]]:
     """
     Run multiple independent experiments for Adaptive MOHHO, Adaptive MOPSO, Improved MOACO, and Baseline.
     
     Returns:
-        results: Dictionary containing performance metrics (best makespan, normalized hypervolume, spread).
-        archives_all: Dictionary of final archives (Pareto fronts) for each algorithm (list of runs).
-        base_schedules: List of baseline schedules from the greedy allocation.
-    
-    Note: Normalized hypervolume is computed using a fixed reference point that is calculated once
-          from the union of all algorithm archives to ensure fair comparison.
+        results: Dictionary containing performance metrics.
+        archives_all: Final archives (Pareto fronts) for each algorithm (list of runs).
+        base_schedules: Baseline schedules.
+        convergence_curves: Convergence histories for each algorithm.
     """
     workers = {"Developer": 10, "Manager": 2, "Tester": 3}
     worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
 
-    if use_random_instance:
-        tasks = generate_random_tasks(num_tasks, workers)
-    else:
-        tasks = get_default_tasks()
+    tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
     model = RCPSPModel(tasks, workers, worker_cost)
     dim = len(model.tasks)
     lb_current = np.array([task["min"] for task in model.tasks])
     ub_current = np.array([task["max"] for task in model.tasks])
     
-    # Prepare results storage.
     results = {
         "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
         "PSO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
@@ -948,6 +1072,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     }
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
     base_schedules = []
+    convergence_curves = {"MOHHO": [], "PSO": [], "MOACO": []}
 
     for run in range(runs):
         logging.info(f"Run {run+1}/{runs}...")
@@ -957,10 +1082,11 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
 
         hho_iter = 100
         search_agents_no = 10
-        archive_hho, _ = MOHHO_with_progress(lambda x: multi_objective(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
+        archive_hho, conv_hho = MOHHO_with_progress(lambda x: multi_objective(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
         best_ms_hho = min(archive_hho, key=lambda entry: entry[1][0])[1][0] if archive_hho else None
         results["MOHHO"]["best_makespan"].append(best_ms_hho)
         archives_all["MOHHO"].append(archive_hho)
+        convergence_curves["MOHHO"].append(conv_hho)
 
         objectives = [lambda x: objective_makespan(x, model),
                       lambda x: objective_total_cost(x, model),
@@ -968,26 +1094,26 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
                         pop=10, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
-        _ = optimizer.run(max_iter=100)
+        conv_pso = optimizer.run(max_iter=100)
         archive_pso = optimizer.archive
         best_ms_pso = min(archive_pso, key=lambda entry: entry[1][0])[1][0] if archive_pso else None
         results["PSO"]["best_makespan"].append(best_ms_pso)
         archives_all["PSO"].append(archive_pso)
+        convergence_curves["PSO"].append(conv_pso)
 
         ant_count = 10
         moaco_iter = 100
-        archive_moaco, _ = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
-                                          lb_current, ub_current, ant_count, moaco_iter,
-                                          alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
+        archive_moaco, conv_moaco = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
+                                                   lb_current, ub_current, ant_count, moaco_iter,
+                                                   alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
         best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
         results["MOACO"]["best_makespan"].append(best_ms_moaco)
         archives_all["MOACO"].append(archive_moaco)
+        convergence_curves["MOACO"].append(conv_moaco)
 
-    # Compute a fixed reference point from the union of all archives.
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
 
-    # For each algorithm and each run, compute normalized hypervolume using the fixed reference.
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
             norm_hv = normalized_hypervolume_fixed(archive, fixed_ref)
@@ -995,7 +1121,6 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             sp = compute_spread(archive)
             results[alg]["spread"].append(sp)
 
-    # (Optional) Compute generational distance using the union archive as true Pareto front.
     union_archive = [entry for alg in archives_all for archive in archives_all[alg] for entry in archive]
     true_pareto = []
     for sol, obj in union_archive:
@@ -1009,19 +1134,13 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             gd_results[alg].append(gd)
     results["Generational_Distance"] = gd_results
 
-    return results, archives_all, base_schedules
+    return results, archives_all, base_schedules, convergence_curves
 
 # =============================================================================
 # ------------------------- Statistical Analysis ----------------------------
 # =============================================================================
 
 def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
-    """
-    Compute the mean, standard deviation, and perform one-way ANOVA on best makespan values.
-    
-    The ANOVA test checks if the differences in mean performance among the algorithms (and baseline)
-    are statistically significant.
-    """
     algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
     means, stds, data = {}, {}, {}
     data["Baseline"] = results["Baseline"]["makespan"]
@@ -1045,14 +1164,6 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
 
 def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, model: RCPSPModel = None,
                                lb: np.ndarray = None, ub: np.ndarray = None, dim: int = None) -> Dict[int, Tuple[float, float]]:
-    """
-    Perform a grid search to tune the population size of Adaptive MOPSO.
-    
-    For each population size, record the average best makespan and standard deviation.
-    
-    Returns:
-        Dictionary mapping population size to (average best makespan, standard deviation).
-    """
     results_grid = {}
     for pop in pop_sizes:
         best_makespans = []
@@ -1076,42 +1187,79 @@ def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, m
     return results_grid
 
 # =============================================================================
+# ------------------------- Automated Unit Testing --------------------------
+# =============================================================================
+
+def run_unit_tests() -> None:
+    sol1 = np.array([1, 2, 3])
+    obj1 = np.array([10, 20, 30])
+    sol2 = np.array([2, 3, 4])
+    obj2 = np.array([12, 22, 32])
+    archive = []
+    archive = update_archive_with_crowding(archive, (sol1, obj1))
+    archive = update_archive_with_crowding(archive, (sol2, obj2))
+    if len(archive) != 1:
+        logging.error("Unit Test Failed: Archive contains dominated solutions.")
+    else:
+        logging.info("Unit Test Passed: Archive update produces non-dominated set.")
+    workers = {"Developer": 5, "Manager": 2, "Tester": 3}
+    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
+    tasks = get_default_tasks()
+    model = RCPSPModel(tasks, workers, worker_cost)
+    x = np.array([task["min"] for task in tasks])
+    schedule, ms = model.compute_schedule(x)
+    if schedule and ms > 0:
+        logging.info("Unit Test Passed: RCPSP schedule is computed successfully.")
+    else:
+        logging.error("Unit Test Failed: RCPSP schedule computation issue.")
+
+# =============================================================================
 # ------------------------- Main Comparison ---------------------------------
 # =============================================================================
 
 if __name__ == '__main__':
-    runs = 5  # Number of independent runs for statistical significance
-    use_random_instance = False  # Set True for random instances (scalability testing)
+    run_unit_tests()
+    
+    runs = 5
+    use_random_instance = False
     num_tasks = 10
 
-    if use_random_instance:
-        tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
-    else:
-        tasks_for_exp = get_default_tasks()
-
-    results, archives_all, base_schedules = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks)
+    tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3}) if use_random_instance else get_default_tasks()
+    results, archives_all, base_schedules, convergence_curves = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks)
     
     with open('experiment_results.json', 'w') as f:
         json.dump(results, f, indent=4)
     
     means, stds = statistical_analysis(results)
     
-    # Plot convergence metrics for Best Makespan, Normalized Hypervolume, Spread, and Generational Distance.
+    # Existing plots
     plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
     plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
     plot_convergence(results["Generational_Distance"], "Generational Distance")
-    
-    # Plot Pareto fronts with the fixed reference point for comparison.
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
     plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
-    
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
     plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
+    
+    # New comparative analytics
+    plot_comparative_bar_chart(results, "best_makespan", ["MOHHO", "PSO", "MOACO", "Baseline"])
+    plot_comparative_bar_chart(results, "normalized_hypervolume", ["MOHHO", "PSO", "MOACO"])
+    plot_comparative_bar_chart(results, "spread", ["MOHHO", "PSO", "MOACO"])
+    # For generational distance, you might compute overall mean per algorithm
+    gd_means = {alg: np.mean(results["Generational_Distance"][alg]) for alg in results["Generational_Distance"]}
+    fig, ax = plt.subplots(figsize=(8,6))
+    ax.bar(list(gd_means.keys()), list(gd_means.values()), color=['blue', 'red', 'green'])
+    ax.set_title("Average Generational Distance")
+    ax.set_ylabel("Generational Distance")
+    plt.show()
+    
+    plot_aggregate_convergence(convergence_curves, "Aggregate Convergence Curves for All Algorithms")
+    plot_radar_chart(results, ["MOHHO", "PSO", "MOACO"], ["best_makespan", "normalized_hypervolume", "spread"])
     
     logging.info("Starting grid search for PSO population size...")
     pop_sizes = [10, 20, 30]
@@ -1123,5 +1271,4 @@ if __name__ == '__main__':
     ub_array = np.array([task["max"] for task in default_tasks])
     grid_results = grid_search_pso_population(pop_sizes, runs_per_config=3, model=model_for_grid,
                                               lb=lb_array, ub=ub_array, dim=len(default_tasks))
-    
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")

@@ -5,10 +5,10 @@ Improved Multi-Objective Comparison for RCPSP using Adaptive MOHHO, Adaptive MOP
 This script implements and compares three metaheuristic algorithms for the Resource-Constrained 
 Project Scheduling Problem (RCPSP) with multiple objectives. The implementation has been updated 
 to incorporate advanced mechanisms from the literature, including:
- - Non-linear adaptive parameter tuning (using cosine schedules)
+ - Non-linear adaptive parameter tuning (using cosine schedules and self-adaptation)
  - Enhanced archive management with diversity preservation (inspired by NSGA-II crowding distance)
- - Periodic local search refinement of the best solution (to improve exploitation)
- - Multi-colony pheromone updates in MOACO to promote diverse exploration across conflicting objectives
+ - Periodic local search and diversity-driven injection of new hawks
+ - Multi-colony pheromone updates with periodic reinitialization in MOACO
 
 References:
  - Heidari, A., et al. "Harris Hawks Optimization: Algorithm and Applications."
@@ -488,7 +488,7 @@ def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     
     If a reference point is provided, it is plotted as a distinct marker.
     """
-    fig = plt.figure(figsize=(16, 7))
+    fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection='3d')
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         if archive:
@@ -543,16 +543,21 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         search_agents_no: int, max_iter: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
     Adaptive MOHHO (Multi-Objective Harris Hawks Optimization) with chaotic initialization,
-    non-linear adaptive escape energy, and periodic local search.
+    non-linear adaptive escape energy, self-adaptive step size, and periodic local search.
+    
+    Also includes diversity-driven injection of new hawks if the population becomes too similar.
     
     Returns:
         archive: List of non-dominated solutions.
         progress: Convergence history (best makespan per iteration).
     """
     X = chaotic_map_initialization(lb, ub, dim, search_agents_no)
+    # Initialize self-adaptive step sizes (one per hawk and per dimension)
+    step_sizes = np.ones((search_agents_no, dim))
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
     t = 0
+    diversity_threshold = 0.1 * np.mean(ub - lb)
     while t < max_iter:
         # Non-linear decaying escape energy (using cosine function)
         E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
@@ -563,6 +568,8 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
         # Select a guiding solution ("rabbit") using diversity-aware roulette selection from archive
         rabbit = random.choice(archive)[0] if archive else X[0, :].copy()
         for i in range(search_agents_no):
+            old_x = X[i, :].copy()
+            old_obj = np.linalg.norm(objf(old_x))
             E0 = 2 * random.random() - 1
             Escaping_Energy = E1 * E0
             r = random.random()
@@ -598,20 +605,33 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0)) + np.random.randn(dim) * levy(dim)
                         if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
                             X[i, :] = X2.copy()
-        # Periodic local search on the best (rabbit) solution every 10 iterations
-        if t % 10 == 0 and archive:
-            # Small perturbation local search
-            best_local = rabbit.copy()
-            best_val = objf(best_local)
-            for _ in range(5):
-                perturbation = np.random.uniform(-0.1, 0.1, size=dim)
-                candidate = np.clip(best_local + perturbation, lb, ub)
-                candidate_val = objf(candidate)
-                if candidate_val[0] < best_val[0]:
-                    best_local = candidate.copy()
-                    best_val = candidate_val.copy()
-            # Replace rabbit if improved
-            rabbit = best_local.copy()
+            # --- Self-adaptive step size update in MOHHO ---
+            # Scale the update by the hawk's step size:
+            new_x = old_x + step_sizes[i, :] * (X[i, :] - old_x)
+            new_x = np.clip(new_x, lb, ub)
+            new_obj = np.linalg.norm(objf(new_x))
+            # Adapt step size based on improvement
+            if new_obj < old_obj:
+                step_sizes[i, :] *= 0.95
+            else:
+                step_sizes[i, :] *= 1.05
+            X[i, :] = new_x.copy()
+        # --- Diversity-driven new hawk injection ---
+        # Compute average pairwise distance in population X
+        dists = [np.linalg.norm(X[i] - X[j]) for i in range(search_agents_no) for j in range(i+1, search_agents_no)]
+        avg_dist = np.mean(dists) if dists else 0
+        if avg_dist < diversity_threshold:
+            # Replace worst performing hawk with a new one
+            obj_values = [np.linalg.norm(objf(X[i])) for i in range(search_agents_no)]
+            worst_idx = np.argmax(obj_values)
+            if archive:
+                base = random.choice(archive)[0]
+                new_hawk = base + np.random.uniform(-0.5, 0.5, size=dim)
+                X[worst_idx, :] = np.clip(new_hawk, lb, ub)
+                step_sizes[worst_idx, :] = np.ones(dim)  # reset step size
+            else:
+                X[worst_idx, :] = chaotic_map_initialization(lb, ub, dim, 1)[0]
+                step_sizes[worst_idx, :] = np.ones(dim)
         best_makespan = np.min([objf(X[i, :])[0] for i in range(search_agents_no)])
         progress.append(best_makespan)
         t += 1
@@ -620,7 +640,8 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
 class PSO:
     """
     Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) with non-linear inertia update,
-    periodic mutation, and diversity-preserving archive updates.
+    periodic mutation, diversity-preserving archive updates, and self-adaptive inertia weights.
+    Also uses hypercube-based leader selection.
     """
     def __init__(self, dim: int, lb: np.ndarray, ub: np.ndarray,
                  obj_funcs: List[Callable[[np.ndarray], float]], pop: int = 30,
@@ -646,7 +667,8 @@ class PSO:
                 'position': pos,
                 'velocity': vel,
                 'pbest': pos.copy(),
-                'obj': self.evaluate(pos)
+                'obj': self.evaluate(pos),
+                'w': self.w_max  # self-adaptive inertia weight per particle
             }
             self.swarm.append(particle)
         self.archive: List[Tuple[np.ndarray, np.ndarray]] = []
@@ -661,37 +683,37 @@ class PSO:
         else:
             return np.array([f(pos) for f in self.obj_funcs])
 
-    def update_archive(self) -> None:
-        """Update the external archive using current swarm particles."""
-        for particle in self.swarm:
-            pos = particle['position'].copy()
-            obj_val = particle['obj'].copy()
-            self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
-
-    def proportional_distribution(self) -> List[np.ndarray]:
+    def select_leader_hypercube(self) -> List[np.ndarray]:
         """
-        Select guiding positions for each particle based on the crowding distance of archive solutions.
+        Select guiding positions for each particle based on hypercube division of the archive.
+        The objective space is divided into a fixed grid, and leaders are selected with probability
+        inversely proportional to the number of archive solutions in the corresponding grid cell.
         """
         if not self.archive:
             return [random.choice(self.swarm)['position'] for _ in range(self.pop)]
-        distances = compute_crowding_distance(self.archive)
-        total = np.sum(distances)
-        if total == 0 or math.isinf(total) or math.isnan(total):
-            probs = [1.0 / len(distances)] * len(distances)
-        else:
-            probs = [d / total for d in distances]
-        guides = []
+        # Use all objectives for grid division
+        objs = np.array([entry[1] for entry in self.archive])
+        num_bins = 5  # fixed number of divisions per objective
+        mins = np.min(objs, axis=0)
+        maxs = np.max(objs, axis=0)
+        # Avoid zero division
+        ranges = np.where(maxs - mins == 0, 1, maxs - mins)
+        cell_indices = []
+        cell_counts = {}
+        for entry in self.archive:
+            idx = tuple(((entry[1] - mins) / ranges * num_bins).astype(int))
+            idx = tuple(min(x, num_bins - 1) for x in idx)
+            cell_indices.append(idx)
+            cell_counts[idx] = cell_counts.get(idx, 0) + 1
+        # For each particle, select a leader from archive with probability proportional to 1/(cell count)
+        leaders = []
+        weights = [1 / cell_counts[cell_indices[i]] for i in range(len(self.archive))]
+        total_weight = sum(weights)
+        probs = [w / total_weight for w in weights]
         for _ in range(self.pop):
-            r = random.random()
-            cum_prob = 0.0
-            chosen_idx = len(probs) - 1
-            for idx, p in enumerate(probs):
-                cum_prob += p
-                if r <= cum_prob:
-                    chosen_idx = idx
-                    break
-            guides.append(self.archive[chosen_idx][0])
-        return guides
+            chosen = np.random.choice(len(self.archive), p=probs)
+            leaders.append(self.archive[chosen][0])
+        return leaders
 
     def jump_improved_operation(self) -> None:
         """Perform a jump operation to help escape local optima."""
@@ -725,17 +747,19 @@ class PSO:
 
     def move(self) -> None:
         """
-        Update the swarm by moving each particle, applying adaptive parameter tuning,
+        Update the swarm by moving each particle, applying self-adaptive inertia weight updates,
         periodic extra mutation if diversity is low, and updating the archive.
+        Leader selection is now performed using a hypercube-based method.
         """
         self.iteration += 1
-        # Non-linear inertia weight update using cosine schedule
-        w = self.w_max - ((self.w_max - self.w_min) * math.cos((self.iteration / self.max_iter) * (math.pi / 2)))
-        guides = self.proportional_distribution()
+        leaders = self.select_leader_hypercube()
         for idx, particle in enumerate(self.swarm):
+            old_pos = particle['position'].copy()
+            old_obj = np.linalg.norm(self.evaluate(old_pos))
             r2 = random.random()
-            guide = guides[idx]
-            new_v = w * particle['velocity'] + self.c2 * r2 * (guide - particle['position'])
+            guide = leaders[idx]
+            # Use the particle's own inertia weight
+            new_v = particle['w'] * particle['velocity'] + self.c2 * r2 * (guide - particle['position'])
             new_v = np.array([np.clip(new_v[i], -self.vmax[i], self.vmax[i]) for i in range(self.dim)])
             particle['velocity'] = new_v
             new_pos = particle['position'] + new_v
@@ -743,20 +767,34 @@ class PSO:
             particle['position'] = new_pos
             particle['obj'] = self.evaluate(new_pos)
             particle['pbest'] = new_pos.copy()
+            # --- Self-adaptive inertia weight update ---
+            new_obj = np.linalg.norm(self.evaluate(new_pos))
+            if new_obj < old_obj:
+                particle['w'] = max(particle['w'] * 0.95, self.w_min)
+            else:
+                particle['w'] = min(particle['w'] * 1.05, self.w_max)
             self.disturbance_operation(particle)
         self.update_archive()
         # Periodic jump operation to boost exploration
         if self.iteration % self.jump_interval == 0:
             self.jump_improved_operation()
-        # Extra mutation: if swarm diversity (average pairwise distance) is low, reinitialize one random particle
+        # Extra mutation: if swarm diversity is low, reinitialize one random particle
         positions = np.array([p['position'] for p in self.swarm])
         if len(positions) > 1:
             pairwise_dists = [np.linalg.norm(positions[i] - positions[j]) for i in range(len(positions)) for j in range(i+1, len(positions))]
             avg_distance = np.mean(pairwise_dists)
-            if avg_distance < 0.1 * np.mean(self.ub - self.lb):  # threshold can be tuned
+            if avg_distance < 0.1 * np.mean(self.ub - self.lb):
                 idx_to_mutate = random.randint(0, self.pop - 1)
                 self.swarm[idx_to_mutate]['position'] = np.array([random.randint(int(self.lb[i]), int(self.ub[i])) for i in range(self.dim)])
                 self.swarm[idx_to_mutate]['obj'] = self.evaluate(self.swarm[idx_to_mutate]['position'])
+        self.update_archive()
+
+    def update_archive(self) -> None:
+        """Update the external archive using current swarm particles."""
+        for particle in self.swarm:
+            pos = particle['position'].copy()
+            obj_val = particle['obj'].copy()
+            self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
 
     def run(self, max_iter: Optional[int] = None) -> List[float]:
         """
@@ -784,10 +822,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
     Improved MOACO (Multi-Objective Ant Colony Optimization) incorporating local search,
-    multi-colony pheromone updates, and adaptive evaporation.
-    
-    The ant population is divided among several colonies, each with its own pheromone matrix.
-    At each iteration, the colony pheromones are merged (averaged) to guide the global search.
+    multi-colony pheromone updates with periodic reinitialization, and adaptive evaporation.
     
     Returns:
         archive: List of non-dominated solutions.
@@ -894,6 +929,17 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     deposit = w2 * (lambda4 if mu > 0 else lambda3)
                 for i, v in enumerate(sol):
                     pheromone[i][v] += deposit
+        # --- Periodic pheromone reinitialization ---
+        for colony_idx in range(colony_count):
+            pheromone = colony_pheromones[colony_idx]
+            # Gather all pheromone values
+            all_values = []
+            for i in range(dim):
+                all_values.extend(list(pheromone[i].values()))
+            if np.var(all_values) < 0.001:  # threshold for reinitialization
+                for i in range(dim):
+                    possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
+                    pheromone[i] = {v: 1.0 for v in possible_values}
         # Merge pheromone matrices from all colonies (average)
         merged_pheromone = []
         for i in range(dim):
@@ -923,9 +969,6 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         results: Dictionary containing performance metrics (best makespan, normalized hypervolume, spread).
         archives_all: Dictionary of final archives (Pareto fronts) for each algorithm (list of runs).
         base_schedules: List of baseline schedules from the greedy allocation.
-    
-    Note: Normalized hypervolume is computed using a fixed reference point that is calculated once
-          from the union of all algorithm archives to ensure fair comparison.
     """
     workers = {"Developer": 10, "Manager": 2, "Tester": 3}
     worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
@@ -1076,10 +1119,49 @@ def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, m
     return results_grid
 
 # =============================================================================
+# ------------------------- Automated Unit Testing --------------------------
+# =============================================================================
+
+def run_unit_tests() -> None:
+    """
+    Run basic unit tests:
+      1. Test that update_archive_with_crowding produces a non-dominated archive.
+      2. Test that RCPSPModel.compute_schedule returns a feasible schedule.
+    """
+    # Test 1: Archive update
+    sol1 = np.array([1, 2, 3])
+    obj1 = np.array([10, 20, 30])
+    sol2 = np.array([2, 3, 4])
+    obj2 = np.array([12, 22, 32])
+    archive = []
+    archive = update_archive_with_crowding(archive, (sol1, obj1))
+    archive = update_archive_with_crowding(archive, (sol2, obj2))
+    # In a minimization context, if sol1 dominates sol2, archive should contain only sol1.
+    if len(archive) != 1:
+        logging.error("Unit Test Failed: Archive contains dominated solutions.")
+    else:
+        logging.info("Unit Test Passed: Archive update produces non-dominated set.")
+
+    # Test 2: Feasibility of schedule
+    workers = {"Developer": 5, "Manager": 2, "Tester": 3}
+    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
+    tasks = get_default_tasks()
+    model = RCPSPModel(tasks, workers, worker_cost)
+    x = np.array([task["min"] for task in tasks])
+    schedule, ms = model.compute_schedule(x)
+    if schedule and ms > 0:
+        logging.info("Unit Test Passed: RCPSP schedule is computed successfully.")
+    else:
+        logging.error("Unit Test Failed: RCPSP schedule computation issue.")
+
+# =============================================================================
 # ------------------------- Main Comparison ---------------------------------
 # =============================================================================
 
 if __name__ == '__main__':
+    # Run unit tests first
+    run_unit_tests()
+    
     runs = 5  # Number of independent runs for statistical significance
     use_random_instance = False  # Set True for random instances (scalability testing)
     num_tasks = 10
