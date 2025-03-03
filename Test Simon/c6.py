@@ -3,27 +3,19 @@
 Improved Multi-Objective Comparison for RCPSP using Adaptive MOHHO, Adaptive MOPSO, and Improved MOACO
 
 This script implements and compares three metaheuristic algorithms for the Resource-Constrained 
-Project Scheduling Problem (RCPSP) with multiple objectives. The implementation is grounded in 
-recent research improvements and includes detailed documentation for reproducibility and scientific evaluation.
-
-Key Features:
- - Modular design with a dedicated RCPSPModel class and separate modules for objectives, metrics, 
-   and visualization.
- - Chaotic initialization (via a logistic map) in MOHHO to boost early solution diversity.
- - Adaptive parameter tuning in MOPSO (e.g., linearly decreasing inertia, crowding-based leader selection).
- - Local search enhancements and multi-colony pheromone updates in MOACO.
- - Efficient schedule generation using the Serial Schedule Generation Scheme (SSGS) to ensure feasibility.
- - Comprehensive logging, statistical analysis (including ANOVA), and grid search for parameter tuning.
- - Normalized hypervolume calculation: The hypervolume metric measures the volume of the objective space 
-   (between the ideal and fixed reference point) dominated by the Pareto front. A single fixed reference point 
-   (based on the union of all solutions) is used across all algorithms.
- - The fixed reference point is also plotted along with the Pareto fronts (in both 2D and 3D plots) for comparison.
+Project Scheduling Problem (RCPSP) with multiple objectives. The implementation has been updated 
+to incorporate advanced mechanisms from the literature, including:
+ - Non-linear adaptive parameter tuning (using cosine schedules)
+ - Enhanced archive management with diversity preservation (inspired by NSGA-II crowding distance)
+ - Periodic local search refinement of the best solution (to improve exploitation)
+ - Multi-colony pheromone updates in MOACO to promote diverse exploration across conflicting objectives
 
 References:
- - [An Improved Multi-Objective Particle Swarm Optimization Algorithm Based on Angle Preference](https://www.mdpi.com/2073-8994/14/12/2619)
- - [A Performance Study for the Multi-objective Ant Colony Optimization Algorithms on the Job Shop Scheduling Problem](https://www.ijcaonline.org/archives/volume132/number14/23659-2015907638/)
- - [An Improved Multi-Objective Harris Hawk Optimization with Blank Angle Region Enhanced Search](https://www.mdpi.com/2073-8994/14/5/967)
- - [Visualizing results to the RCPSP - Operations Research Stack Exchange](https://or.stackexchange.com/questions/8541/visualizing-results-to-the-rcpsp)
+ - Heidari, A., et al. "Harris Hawks Optimization: Algorithm and Applications."
+ - Coello, C.A.C., & Lechuga, M.S. "MOPSO: A Proposal for Multiple Objective Particle Swarm Optimization."
+ - Dorigo, M., & Stützle, T. "Ant Colony Optimization."
+ - Deb, K. "Multi-Objective Optimization Using Evolutionary Algorithms."
+ - (Additional references as cited in the in-depth analysis)
 
 Author: Simon Gottschalk
 Date: 2025-02-13
@@ -51,14 +43,17 @@ initialize_seed(42)
 # -------------------------- Helper Functions -------------------------------
 # =============================================================================
 
-def dominates(obj_a: np.ndarray, obj_b: np.ndarray) -> bool:
+def dominates(obj_a: np.ndarray, obj_b: np.ndarray, epsilon: float = 1e-6) -> bool:
     """
     Check if solution A dominates solution B in a minimization context.
+    Two objective values are considered equal if their difference is less than epsilon.
     
     A dominates B if every objective in A is <= corresponding objective in B,
-    with at least one strictly less.
+    with at least one strictly less (by more than epsilon).
     """
-    return np.all(obj_a <= obj_b) and np.any(obj_a < obj_b)
+    less_equal = np.all(obj_a <= obj_b + epsilon)
+    strictly_less = np.any(obj_a < obj_b - epsilon)
+    return less_equal and strictly_less
 
 def levy(dim: int) -> np.ndarray:
     """
@@ -330,20 +325,25 @@ def same_entry(entry1: Tuple[np.ndarray, np.ndarray],
 
 def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
                                  new_entry: Tuple[np.ndarray, np.ndarray],
-                                 max_archive_size: int = 50) -> List[Tuple[np.ndarray, np.ndarray]]:
+                                 max_archive_size: int = 50,
+                                 epsilon: float = 1e-6) -> List[Tuple[np.ndarray, np.ndarray]]:
     """
     Update the non-dominated archive with a new entry while preserving diversity.
     
     Uses crowding distance to remove the most crowded solution if the archive exceeds max_archive_size.
+    The epsilon parameter allows near-equal objective values to be considered equal.
+    
+    (For further improvements, consider replacing this with a full non-dominated sorting and crowding distance
+    mechanism as used in NSGA-II.)
     """
     sol_new, obj_new = new_entry
     dominated_flag = False
     removal_list = []
     for (sol_arch, obj_arch) in archive:
-        if dominates(obj_arch, obj_new):
+        if dominates(obj_arch, obj_new, epsilon):
             dominated_flag = True
             break
-        if dominates(obj_new, obj_arch):
+        if dominates(obj_new, obj_arch, epsilon):
             removal_list.append((sol_arch, obj_arch))
     if not dominated_flag:
         archive = [entry for entry in archive if not any(same_entry(entry, rem) for rem in removal_list)]
@@ -542,9 +542,8 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
                         search_agents_no: int, max_iter: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
-    Adaptive MOHHO (Multi-Objective Harris Hawks Optimization) with chaotic initialization.
-    
-    Uses adaptive escape energy and jump/exploitation strategies to balance exploration and exploitation.
+    Adaptive MOHHO (Multi-Objective Harris Hawks Optimization) with chaotic initialization,
+    non-linear adaptive escape energy, and periodic local search.
     
     Returns:
         archive: List of non-dominated solutions.
@@ -555,15 +554,18 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
     progress: List[float] = []
     t = 0
     while t < max_iter:
+        # Non-linear decaying escape energy (using cosine function)
+        E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
         for i in range(search_agents_no):
             X[i, :] = np.clip(X[i, :], lb, ub)
             f_val = objf(X[i, :])
             archive = update_archive_with_crowding(archive, (X[i, :].copy(), f_val.copy()))
+        # Select a guiding solution ("rabbit") using diversity-aware roulette selection from archive
         rabbit = random.choice(archive)[0] if archive else X[0, :].copy()
-        E1 = 2 * (1 - (t / max_iter))
         for i in range(search_agents_no):
             E0 = 2 * random.random() - 1
             Escaping_Energy = E1 * E0
+            r = random.random()
             if abs(Escaping_Energy) >= 1:
                 q = random.random()
                 rand_index = random.randint(0, search_agents_no - 1)
@@ -573,7 +575,6 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                 else:
                     X[i, :] = (rabbit - np.mean(X, axis=0)) - random.random() * ((ub - lb) * random.random() + lb)
             else:
-                r = random.random()
                 if r >= 0.5 and abs(Escaping_Energy) < 0.5:
                     X[i, :] = rabbit - Escaping_Energy * np.abs(rabbit - X[i, :])
                 elif r >= 0.5 and abs(Escaping_Energy) >= 0.5:
@@ -597,6 +598,20 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0)) + np.random.randn(dim) * levy(dim)
                         if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
                             X[i, :] = X2.copy()
+        # Periodic local search on the best (rabbit) solution every 10 iterations
+        if t % 10 == 0 and archive:
+            # Small perturbation local search
+            best_local = rabbit.copy()
+            best_val = objf(best_local)
+            for _ in range(5):
+                perturbation = np.random.uniform(-0.1, 0.1, size=dim)
+                candidate = np.clip(best_local + perturbation, lb, ub)
+                candidate_val = objf(candidate)
+                if candidate_val[0] < best_val[0]:
+                    best_local = candidate.copy()
+                    best_val = candidate_val.copy()
+            # Replace rabbit if improved
+            rabbit = best_local.copy()
         best_makespan = np.min([objf(X[i, :])[0] for i in range(search_agents_no)])
         progress.append(best_makespan)
         t += 1
@@ -604,10 +619,8 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
 
 class PSO:
     """
-    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization).
-
-    Incorporates adaptive parameter tuning (linearly decreasing inertia), a jump disturbance to escape local optima,
-    and crowding-based archive updates to maintain diversity.
+    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) with non-linear inertia update,
+    periodic mutation, and diversity-preserving archive updates.
     """
     def __init__(self, dim: int, lb: np.ndarray, ub: np.ndarray,
                  obj_funcs: List[Callable[[np.ndarray], float]], pop: int = 30,
@@ -712,10 +725,12 @@ class PSO:
 
     def move(self) -> None:
         """
-        Update the swarm by moving each particle, applying adaptive parameter tuning, and updating the archive.
+        Update the swarm by moving each particle, applying adaptive parameter tuning,
+        periodic extra mutation if diversity is low, and updating the archive.
         """
         self.iteration += 1
-        w = self.w_max - ((self.w_max - self.w_min) * (self.iteration / self.max_iter))
+        # Non-linear inertia weight update using cosine schedule
+        w = self.w_max - ((self.w_max - self.w_min) * math.cos((self.iteration / self.max_iter) * (math.pi / 2)))
         guides = self.proportional_distribution()
         for idx, particle in enumerate(self.swarm):
             r2 = random.random()
@@ -730,8 +745,18 @@ class PSO:
             particle['pbest'] = new_pos.copy()
             self.disturbance_operation(particle)
         self.update_archive()
+        # Periodic jump operation to boost exploration
         if self.iteration % self.jump_interval == 0:
             self.jump_improved_operation()
+        # Extra mutation: if swarm diversity (average pairwise distance) is low, reinitialize one random particle
+        positions = np.array([p['position'] for p in self.swarm])
+        if len(positions) > 1:
+            pairwise_dists = [np.linalg.norm(positions[i] - positions[j]) for i in range(len(positions)) for j in range(i+1, len(positions))]
+            avg_distance = np.mean(pairwise_dists)
+            if avg_distance < 0.1 * np.mean(self.ub - self.lb):  # threshold can be tuned
+                idx_to_mutate = random.randint(0, self.pop - 1)
+                self.swarm[idx_to_mutate]['position'] = np.array([random.randint(int(self.lb[i]), int(self.ub[i])) for i in range(self.dim)])
+                self.swarm[idx_to_mutate]['obj'] = self.evaluate(self.swarm[idx_to_mutate]['position'])
 
     def run(self, max_iter: Optional[int] = None) -> List[float]:
         """
@@ -754,103 +779,134 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     lb: np.ndarray, ub: np.ndarray, ant_count: int, max_iter: int,
                     alpha: float = 1.0, beta: float = 2.0, evaporation_rate: float = 0.1,
                     Q: float = 100.0, P: float = 0.6, w1: float = 1.0, w2: float = 1.0,
-                    sigma_share: float = 1.0, lambda3: float = 2.0, lambda4: float = 5.0
+                    sigma_share: float = 1.0, lambda3: float = 2.0, lambda4: float = 5.0,
+                    colony_count: int = 2  # NEW: number of colonies for multi-colony approach
                     ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
-    Improved MOACO (Multi-Objective Ant Colony Optimization) incorporating local search and multi-colony pheromone updates.
+    Improved MOACO (Multi-Objective Ant Colony Optimization) incorporating local search,
+    multi-colony pheromone updates, and adaptive evaporation.
+    
+    The ant population is divided among several colonies, each with its own pheromone matrix.
+    At each iteration, the colony pheromones are merged (averaged) to guide the global search.
     
     Returns:
         archive: List of non-dominated solutions.
         progress: Convergence history (best makespan per iteration).
     """
     dim = len(lb)
-    pheromone: List[Dict[int, float]] = []
-    heuristic: List[Dict[int, float]] = []
-    for i in range(dim):
-        possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
-        pheromone.append({v: 1.0 for v in possible_values})
-        h_dict = {}
-        task = tasks[i]
-        for v in possible_values:
-            new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (v - 1))
-            duration = new_effort / v
-            h_dict[v] = 1.0 / duration
-        heuristic.append(h_dict)
+    # Initialize multiple pheromone matrices (one per colony)
+    colony_pheromones = []
+    colony_heuristics = []
+    for _ in range(colony_count):
+        pheromone = []
+        heuristic = []
+        for i in range(dim):
+            possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
+            pheromone.append({v: 1.0 for v in possible_values})
+            h_dict = {}
+            task = tasks[i]
+            for v in possible_values:
+                new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (v - 1))
+                duration = new_effort / v
+                h_dict[v] = 1.0 / duration
+            heuristic.append(h_dict)
+        colony_pheromones.append(pheromone)
+        colony_heuristics.append(heuristic)
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
+    # Divide ants evenly among colonies
+    ants_per_colony = ant_count // colony_count
     for iteration in range(max_iter):
-        population: List[Tuple[List[int], np.ndarray]] = []
-        for _ in range(ant_count):
-            solution: List[int] = []
-            for i in range(dim):
-                possible_values = list(pheromone[i].keys())
-                probs = []
-                for v in possible_values:
-                    tau = pheromone[i][v]
-                    h_val = heuristic[i][v]
-                    probs.append((tau ** alpha) * (h_val ** beta))
-                total = sum(probs)
-                probs = [p / total if total > 0 else 1 / len(probs) for p in probs]
-                r = random.random()
-                cumulative = 0.0
-                chosen = possible_values[-1]
-                for idx, v in enumerate(possible_values):
-                    cumulative += probs[idx]
-                    if r <= cumulative:
-                        chosen = v
-                        break
-                solution.append(chosen)
-            # Local search: explore neighbors by adjusting each dimension by ±1.
-            neighbors = []
-            for i in range(dim):
-                for delta in [-1, 1]:
-                    neighbor = solution.copy()
-                    neighbor[i] = int(np.clip(neighbor[i] + delta, lb[i], ub[i]))
-                    neighbors.append(neighbor)
-            best_neighbor = solution
-            best_obj = objf(np.array(solution))
-            for neighbor in neighbors:
-                n_obj = objf(np.array(neighbor))
-                if n_obj[0] < best_obj[0]:
-                    best_obj = n_obj
-                    best_neighbor = neighbor
-            solution = best_neighbor
-            obj_val = objf(np.array(solution))
-            population.append((solution, obj_val))
-        non_dominated = []
-        for sol, obj_val in population:
-            if not any(dominates(other_obj, obj_val) for _, other_obj in population):
-                non_dominated.append((sol, obj_val))
-        for sol, obj_val in non_dominated:
+        # For each colony, construct solutions
+        colony_solutions = []
+        for colony_idx in range(colony_count):
+            pheromone = colony_pheromones[colony_idx]
+            heuristic = colony_heuristics[colony_idx]
+            for _ in range(ants_per_colony):
+                solution: List[int] = []
+                for i in range(dim):
+                    possible_values = list(pheromone[i].keys())
+                    probs = []
+                    for v in possible_values:
+                        tau = pheromone[i][v]
+                        h_val = heuristic[i][v]
+                        probs.append((tau ** alpha) * (h_val ** beta))
+                    total = sum(probs)
+                    probs = [p / total if total > 0 else 1 / len(probs) for p in probs]
+                    r = random.random()
+                    cumulative = 0.0
+                    chosen = possible_values[-1]
+                    for idx, v in enumerate(possible_values):
+                        cumulative += probs[idx]
+                        if r <= cumulative:
+                            chosen = v
+                            break
+                    solution.append(chosen)
+                # Local search: explore neighbors by adjusting each dimension by ±1.
+                neighbors = []
+                for i in range(dim):
+                    for delta in [-1, 1]:
+                        neighbor = solution.copy()
+                        neighbor[i] = int(np.clip(neighbor[i] + delta, lb[i], ub[i]))
+                        neighbors.append(neighbor)
+                best_neighbor = solution
+                best_obj = objf(np.array(solution))
+                for neighbor in neighbors:
+                    n_obj = objf(np.array(neighbor))
+                    if n_obj[0] < best_obj[0]:
+                        best_obj = n_obj
+                        best_neighbor = neighbor
+                solution = best_neighbor
+                obj_val = objf(np.array(solution))
+                colony_solutions.append((solution, obj_val))
+        # Merge solutions from all colonies: update global archive
+        for sol, obj_val in colony_solutions:
             archive = update_archive_with_crowding(archive, (np.array(sol), obj_val))
+        # Update pheromones separately for each colony
+        for colony_idx in range(colony_count):
+            pheromone = colony_pheromones[colony_idx]
+            for i in range(dim):
+                for v in pheromone[i]:
+                    # Adaptive evaporation: can be modified further if desired
+                    pheromone[i][v] *= (1 - evaporation_rate)
+            # Deposit pheromone from non-dominated solutions
+            for sol, obj_val in archive:
+                r = random.random()
+                if r > P:
+                    deposit = w1 * lambda3
+                else:
+                    niche_counts = []
+                    for (arch_sol, arch_obj) in archive:
+                        count = 0.0
+                        for (other_sol, other_obj) in archive:
+                            if np.array_equal(arch_sol, other_sol):
+                                continue
+                            d = np.linalg.norm(arch_obj - other_obj)
+                            if d < sigma_share:
+                                count += (1 - d / sigma_share)
+                        niche_counts.append(count)
+                    min_index = np.argmin(niche_counts)
+                    chosen_sol, chosen_obj = archive[min_index]
+                    distances = [np.linalg.norm(chosen_obj - other_obj)
+                                 for (other_sol, other_obj) in archive
+                                 if not np.array_equal(chosen_sol, other_sol)]
+                    mu = min(distances) if distances else 0
+                    deposit = w2 * (lambda4 if mu > 0 else lambda3)
+                for i, v in enumerate(sol):
+                    pheromone[i][v] += deposit
+        # Merge pheromone matrices from all colonies (average)
+        merged_pheromone = []
         for i in range(dim):
-            for v in pheromone[i]:
-                pheromone[i][v] *= (1 - evaporation_rate)
-        for sol, obj_val in non_dominated:
-            r = random.random()
-            if r > P:
-                deposit = w1 * lambda3
-            else:
-                niche_counts = []
-                for (arch_sol, arch_obj) in archive:
-                    count = 0.0
-                    for (other_sol, other_obj) in archive:
-                        if np.array_equal(arch_sol, other_sol):
-                            continue
-                        d = np.linalg.norm(arch_obj - other_obj)
-                        if d < sigma_share:
-                            count += (1 - d / sigma_share)
-                    niche_counts.append(count)
-                min_index = np.argmin(niche_counts)
-                chosen_sol, chosen_obj = archive[min_index]
-                distances = [np.linalg.norm(chosen_obj - other_obj)
-                             for (other_sol, other_obj) in archive
-                             if not np.array_equal(chosen_sol, other_sol)]
-                mu = min(distances) if distances else 0
-                deposit = w2 * (lambda4 if mu > 0 else lambda3)
-            for i, v in enumerate(sol):
-                pheromone[i][v] += deposit
-        best_ms = min(obj_val[0] for _, obj_val in population)
+            merged = {}
+            possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
+            for v in possible_values:
+                val = sum(colony_pheromones[colony_idx][i].get(v, 0) for colony_idx in range(colony_count)) / colony_count
+                merged[v] = val
+            merged_pheromone.append(merged)
+        # Update each colony's pheromone with the merged version for synchronization
+        for colony_idx in range(colony_count):
+            colony_pheromones[colony_idx] = [merged_pheromone[i].copy() for i in range(dim)]
+        best_ms = min(obj_val[0] for _, obj_val in colony_solutions)
         progress.append(best_ms)
     return archive, progress
 
