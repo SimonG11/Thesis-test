@@ -1083,42 +1083,6 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
     return means, stds
 
 # =============================================================================
-# ------------------------- Parameter Tuning (Grid Search) ------------------
-# =============================================================================
-
-def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, model: RCPSPModel = None,
-                               lb: np.ndarray = None, ub: np.ndarray = None, dim: int = None) -> Dict[int, Tuple[float, float]]:
-    """
-    Perform a grid search to tune the population size of Adaptive MOPSO.
-    
-    For each population size, record the average best makespan and standard deviation.
-    
-    Returns:
-        Dictionary mapping population size to (average best makespan, standard deviation).
-    """
-    results_grid = {}
-    for pop in pop_sizes:
-        best_makespans = []
-        for _ in range(runs_per_config):
-            objectives = [lambda x: objective_makespan(x, model),
-                          lambda x: objective_total_cost(x, model),
-                          lambda x: objective_neg_utilization(x, model)]
-            optimizer = PSO(dim=dim, lb=lb, ub=ub, obj_funcs=objectives,
-                            pop=pop, c2=1.05, w_max=0.9, w_min=0.4,
-                            disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
-            _ = optimizer.run(max_iter=30)
-            archive = optimizer.archive
-            if archive:
-                best = min(archive, key=lambda entry: entry[1][0])[1][0]
-                best_makespans.append(best)
-        if best_makespans:
-            avg = np.mean(best_makespans)
-            std = np.std(best_makespans)
-            results_grid[pop] = (avg, std)
-            logging.info(f"PSO pop size {pop}: Avg best makespan = {avg:.2f}, Std = {std:.2f}")
-    return results_grid
-
-# =============================================================================
 # ------------------------- Automated Unit Testing --------------------------
 # =============================================================================
 
@@ -1203,7 +1167,5 @@ if __name__ == '__main__':
     model_for_grid = RCPSPModel(default_tasks, workers, worker_cost)
     lb_array = np.array([task["min"] for task in default_tasks])
     ub_array = np.array([task["max"] for task in default_tasks])
-    grid_results = grid_search_pso_population(pop_sizes, runs_per_config=3, model=model_for_grid,
-                                              lb=lb_array, ub=ub_array, dim=len(default_tasks))
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")
