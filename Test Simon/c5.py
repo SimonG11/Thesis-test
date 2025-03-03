@@ -15,10 +15,9 @@ Key Features:
  - Efficient schedule generation using the Serial Schedule Generation Scheme (SSGS) to ensure feasibility.
  - Comprehensive logging, statistical analysis (including ANOVA), and grid search for parameter tuning.
  - Normalized hypervolume calculation: The hypervolume metric measures the volume of the objective space 
-   (between the ideal and nadir points) dominated by the Pareto front. Here we compute a fixed reference 
-   point (based on the union of all solutions) so that the normalized hypervolume percentage is comparable 
-   across algorithms.
- - Enhanced documentation throughout the file.
+   (between the ideal and fixed reference point) dominated by the Pareto front. A single fixed reference point 
+   (based on the union of all solutions) is used across all algorithms.
+ - The fixed reference point is also plotted along with the Pareto fronts (in both 2D and 3D plots) for comparison.
 
 References:
  - [An Improved Multi-Objective Particle Swarm Optimization Algorithm Based on Angle Preference](https://www.mdpi.com/2073-8994/14/12/2619)
@@ -290,8 +289,8 @@ def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
     Approximate the hypervolume of the archive via Monte Carlo sampling.
     
     Hypervolume measures the volume of the objective space dominated by the Pareto front, relative
-    to a reference point. For minimization problems, a reference point (often the nadir point) should
-    be chosen such that it is dominated by all solutions.
+    to a reference point. For minimization problems, the reference point should be chosen such that
+    it is dominated by all solutions.
     """
     if not archive:
         return 0.0
@@ -395,7 +394,6 @@ def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, 
     if not union_archive:
         raise ValueError("No archive entries found.")
     objs = np.array([entry[1] for entry in union_archive])
-    # For minimization, use the element-wise maximum (nadir) as the reference.
     ref_point = np.max(objs, axis=0)
     return ref_point
 
@@ -414,7 +412,7 @@ def normalized_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]], f
         return 0.0
     objs = np.array([entry[1] for entry in archive])
     ideal = np.min(objs, axis=0)
-    total_volume = fixed_ref[0] * fixed_ref[1]
+    total_volume = np.prod(fixed_ref - ideal)
     if total_volume == 0:
         return 0.0
     hv = approximate_hypervolume(archive, reference_point=fixed_ref)
@@ -460,14 +458,21 @@ def plot_convergence(metrics_dict: Dict[str, List[float]], metric_name: str) -> 
     plt.show()
 
 def plot_pareto_2d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
-                   labels: List[str], markers: List[str], colors: List[str]) -> None:
-    """Plot 2D Pareto fronts (Makespan vs. Total Cost) for the provided archives."""
+                   labels: List[str], markers: List[str], colors: List[str],
+                   ref_point: Optional[np.ndarray] = None) -> None:
+    """
+    Plot 2D Pareto fronts (Makespan vs. Total Cost) for the provided archives.
+    
+    If a reference point is provided, it is plotted as an 'x' marker for comparison.
+    """
     plt.figure(figsize=(8, 6))
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         if archive:
             objs = np.array([entry[1] for entry in archive])
             plt.scatter(objs[:, 0], objs[:, 1], c=color, marker=marker, s=80,
                         edgecolor='k', label=label)
+    if ref_point is not None:
+        plt.scatter(ref_point[0], ref_point[1], c='black', marker='x', s=100, label='Fixed Reference')
     plt.xlabel("Makespan (hours)")
     plt.ylabel("Total Cost")
     plt.title("2D Pareto Front (Makespan vs. Total Cost)")
@@ -476,18 +481,23 @@ def plot_pareto_2d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     plt.show()
 
 def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
-                   labels: List[str], markers: List[str], colors: List[str]) -> None:
-    """Plot 3D Pareto fronts (Makespan, Total Cost, Average Utilization) for the provided archives."""
+                   labels: List[str], markers: List[str], colors: List[str],
+                   ref_point: Optional[np.ndarray] = None) -> None:
+    """
+    Plot 3D Pareto fronts (Makespan, Total Cost, Average Utilization) for the provided archives.
+    
+    If a reference point is provided, it is plotted as a distinct marker.
+    """
     fig = plt.figure(figsize=(16, 7))
     ax = fig.add_subplot(111, projection='3d')
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         if archive:
             objs = np.array([entry[1] for entry in archive])
+            # Note: Average utilization is negated in our objective vector.
             ax.scatter(objs[:, 0], objs[:, 1], -objs[:, 2], c=color, marker=marker, s=80,
                        edgecolor='k', label=label)
-    ax.scatter( [555.595238],
-                 [72589.2857], 
-                 [1], c="purple" )
+    if ref_point is not None:
+        ax.scatter([ref_point[0]], [ref_point[1]], [-ref_point[2]], c='black', marker='x', s=100, label='Fixed Reference')
     ax.set_xlabel("Makespan (hours)")
     ax.set_ylabel("Total Cost")
     ax.set_zlabel("Average Utilization")
@@ -873,7 +883,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     lb_current = np.array([task["min"] for task in model.tasks])
     ub_current = np.array([task["max"] for task in model.tasks])
     
-    # Prepare results storage. (Note: hypervolume will be normalized later with a fixed reference point.)
+    # Prepare results storage.
     results = {
         "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
         "PSO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
@@ -889,8 +899,8 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         results["Baseline"]["makespan"].append(base_ms)
         base_schedules.append(base_schedule)
 
-        hho_iter = 30
-        search_agents_no = 5
+        hho_iter = 200
+        search_agents_no = 30
         archive_hho, _ = MOHHO_with_progress(lambda x: multi_objective(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
         best_ms_hho = min(archive_hho, key=lambda entry: entry[1][0])[1][0] if archive_hho else None
         results["MOHHO"]["best_makespan"].append(best_ms_hho)
@@ -900,16 +910,16 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                       lambda x: objective_total_cost(x, model),
                       lambda x: objective_neg_utilization(x, model)]
         optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
-                        pop=5, c2=1.05, w_max=0.9, w_min=0.4,
+                        pop=30, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
-        _ = optimizer.run(max_iter=30)
+        _ = optimizer.run(max_iter=200)
         archive_pso = optimizer.archive
         best_ms_pso = min(archive_pso, key=lambda entry: entry[1][0])[1][0] if archive_pso else None
         results["PSO"]["best_makespan"].append(best_ms_pso)
         archives_all["PSO"].append(archive_pso)
 
-        ant_count = 5
-        moaco_iter = 30
+        ant_count = 30
+        moaco_iter = 200
         archive_moaco, _ = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
                                           lb_current, ub_current, ant_count, moaco_iter,
                                           alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
@@ -1036,9 +1046,12 @@ if __name__ == '__main__':
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
     plot_convergence(results["Generational_Distance"], "Generational Distance")
     
+    # Plot Pareto fronts with the fixed reference point for comparison.
+    fixed_ref = compute_fixed_reference(archives_all)
+    logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
-    plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'])
-    plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'])
+    plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
