@@ -1246,20 +1246,7 @@ if __name__ == '__main__':
     last_makespan = results["Baseline"]["makespan"][-1]
     plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
     
-    # New comparative analytics
-    plot_comparative_bar_chart(results, "best_makespan", ["MOHHO", "PSO", "MOACO", "Baseline"])
-    plot_comparative_bar_chart(results, "normalized_hypervolume", ["MOHHO", "PSO", "MOACO"])
-    plot_comparative_bar_chart(results, "spread", ["MOHHO", "PSO", "MOACO"])
-    # For generational distance, you might compute overall mean per algorithm
-    gd_means = {alg: np.mean(results["Generational_Distance"][alg]) for alg in results["Generational_Distance"]}
-    fig, ax = plt.subplots(figsize=(8,6))
-    ax.bar(list(gd_means.keys()), list(gd_means.values()), color=['blue', 'red', 'green'])
-    ax.set_title("Average Generational Distance")
-    ax.set_ylabel("Generational Distance")
-    plt.show()
-    
     plot_aggregate_convergence(convergence_curves, "Aggregate Convergence Curves for All Algorithms")
-    plot_radar_chart(results, ["MOHHO", "PSO", "MOACO"], ["best_makespan", "normalized_hypervolume", "spread"])
     
     logging.info("Starting grid search for PSO population size...")
     pop_sizes = [10, 20, 30]
