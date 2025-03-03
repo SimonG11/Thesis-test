@@ -279,7 +279,7 @@ def multi_objective(x: np.ndarray, model: RCPSPModel) -> np.ndarray:
 
 def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
                             reference_point: np.ndarray,
-                            num_samples: int = 100) -> float:
+                            num_samples: int = 1000) -> float:
     """
     Approximate the hypervolume of the archive via Monte Carlo sampling.
     
@@ -295,6 +295,53 @@ def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
     count = sum(1 for sample in samples if any(np.all(sol <= sample) for sol in objs))
     vol = np.prod(reference_point - mins)
     return (count / num_samples) * vol
+
+def absolute_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]],
+                                  reference_point: np.ndarray,
+                                  global_lower_bound: np.ndarray = np.array([0, 0]),
+                                  num_samples: int = 1000) -> float:
+    """
+    Approximate the absolute hypervolume of the archive using a fixed global lower bound.
+    
+    In this approach, we define a fixed box that spans from a predetermined lower bound (global_lower_bound)
+    to a fixed reference point. The absolute hypervolume is then estimated as the total volume of this box that is
+    dominated by the solutions in the archive.
+    
+    Parameters:
+        archive: A list of tuples, where each tuple is (decision_vector, objective_vector).
+                 The objective vectors are assumed to be for minimization.
+        global_lower_bound: A fixed lower bound for the objective space (e.g., np.array([0, 0, 0])).
+        reference_point: A fixed reference point (upper bound) for the objective space.
+        num_samples: Number of random samples used in the Monte Carlo approximation.
+    
+    Returns:
+        The approximate absolute hypervolume (raw dominated volume) as a float.
+    
+    How it works:
+      1. It uses the fixed global_lower_bound and the fixed reference_point to define the full search space.
+      2. It generates random samples uniformly from this full box.
+      3. For each sample, it checks if any solution in the archive dominates that sample.
+      4. The hypervolume is then estimated as the fraction of dominated samples multiplied by the total volume of the box.
+    """
+    if not archive:
+        return 0.0
+
+    # Define the full box using the fixed global lower bound.
+    lb = global_lower_bound
+    ub = reference_point
+
+    # Generate random samples within the box [lb, ub].
+    samples = np.random.uniform(low=lb, high=ub, size=(num_samples, len(ub)))
+    
+    # Extract the objective vectors from the archive.
+    objs = np.array([entry[1] for entry in archive])
+    
+    # Count samples that are dominated by at least one solution in the archive.
+    dominated_count = sum(1 for sample in samples if any(np.all(sol <= sample) for sol in objs))
+    
+    # Estimate the absolute hypervolume.
+    hypervolume = (dominated_count / num_samples) * 100
+    return hypervolume
 
 def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
     """
@@ -395,6 +442,29 @@ def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, 
         raise ValueError("No archive entries found.")
     objs = np.array([entry[1] for entry in union_archive])
     ref_point = np.max(objs, axis=0)
+    return ref_point
+
+def compute_combined_ideal(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
+    """
+    Compute the combined ideal point from multiple archives.
+    
+    The ideal point is the element-wise minimum of all objective vectors across all archives.
+    
+    Parameters:
+        archives: A list where each element is an archive (a list of (decision_vector, objective_vector) tuples).
+    
+    Returns:
+        A NumPy array representing the combined ideal point.
+    """
+    # Gather all objective vectors from every archive
+    union_archive = []
+    for alg in archives_all:
+        for archive in archives_all[alg]:
+            union_archive.extend(archive)
+    if not union_archive:
+        raise ValueError("No archive entries found.")
+    objs = np.array([entry[1] for entry in union_archive])
+    ref_point = np.min(objs, axis=0)
     return ref_point
 
 def normalized_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]], fixed_ref: np.ndarray) -> float:
@@ -1065,9 +1135,9 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     ub_current = np.array([task["max"] for task in model.tasks])
     
     results = {
-        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
-        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
-        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
+        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": []},
+        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": []},
+        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": []},
         "Baseline": {"makespan": []}
     }
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
@@ -1112,12 +1182,16 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         convergence_curves["MOACO"].append(conv_moaco)
 
     fixed_ref = compute_fixed_reference(archives_all)
+    global_lower_bound = compute_combined_ideal(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
+    logging.info(f"Fixed hypervolume ideal point: {global_lower_bound}")
 
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
             norm_hv = normalized_hypervolume_fixed(archive, fixed_ref)
+            abs_hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
             results[alg]["normalized_hypervolume"].append(norm_hv)
+            results[alg]["absolute_hypervolume"].append(abs_hv)
             sp = compute_spread(archive)
             results[alg]["spread"].append(sp)
 

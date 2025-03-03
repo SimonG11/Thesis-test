@@ -21,6 +21,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random, math, time, copy
 from mpl_toolkits.mplot3d import Axes3D  # For 3D plotting
+from scipy.interpolate import PchipInterpolator
 
 # =============================================================================
 # ------------------------ Helper Functions -------------------------------
@@ -488,6 +489,100 @@ class PSO:
             best_ms = min([p['obj'][0] for p in self.swarm])
             convergence.append(best_ms)
         return convergence
+    
+
+def compute_combined_pareto_front(pso_archive, hho_archive):
+    """
+    Combine two archives (each a list of tuples (solution, obj_vector))
+    and compute the non-dominated set (Pareto front) from the combined list.
+    
+    Assumes each objective vector is of the form:
+      [makespan, cost, -average_utilization]
+      
+    Returns:
+      pareto_archive: A list of (solution, obj_vector) tuples that are not dominated by any other.
+    """
+    combined_archive = pso_archive + hho_archive
+    pareto_archive = []
+    n = len(combined_archive)
+    
+    for i in range(n):
+        sol_i, obj_i = combined_archive[i]
+        is_dominated = False
+        for j in range(n):
+            if i == j:
+                continue  # Skip self–comparison.
+            sol_j, obj_j = combined_archive[j]
+            if dominates(obj_j, obj_i):
+                is_dominated = True
+                break
+        if not is_dominated:
+            pareto_archive.append((sol_i, obj_i))
+            
+    return pareto_archive
+
+
+def compute_pareto_front_smooth(pso_archive, hho_archive):
+    """
+    Computes the Pareto front from the combined archives and fits a smooth curve
+    through the Pareto front points using PCHIP interpolation.
+    
+    Returns:
+      - unique_makespans: 1D numpy array of strictly increasing makespan values
+      - unique_costs: 1D numpy array of corresponding cost values
+      - smooth_curve: a function that, given a makespan, returns the smooth cost on the Pareto front
+      - pareto_archive: the list of (solution, obj_vector) entries that form the Pareto front.
+    """
+    # 1. Compute the combined Pareto front.
+    pareto_archive = compute_combined_pareto_front(pso_archive, hho_archive)
+    # 2. Extract objectives of interest.
+    #    Assumes: obj = [makespan, cost, -average_utilization]
+    pareto_objs = np.array([obj for (_, obj) in pareto_archive])
+    makespans = pareto_objs[:, 0]
+    costs = pareto_objs[:, 1]
+    
+    # 3. Sort the Pareto front points by makespan.
+    sort_idx = np.argsort(makespans)
+    sorted_makespans = makespans[sort_idx]
+    sorted_costs = costs[sort_idx]
+    
+    # 4. Remove duplicates: if multiple points share the same makespan, keep the one with the lower cost.
+    unique_makespans = []
+    unique_costs = []
+    
+    # Initialize with the first point.
+    current_x = sorted_makespans[0]
+    current_cost = sorted_costs[0]
+    unique_makespans.append(current_x)
+    unique_costs.append(current_cost)
+    
+    # Loop through the sorted values and update.
+    for x, cost in zip(sorted_makespans[1:], sorted_costs[1:]):
+        if np.isclose(x, current_x):
+            # Same makespan: update the cost if this one is lower.
+            if cost < current_cost:
+                current_cost = cost
+                unique_costs[-1] = cost
+        else:
+            current_x = x
+            current_cost = cost
+            unique_makespans.append(x)
+            unique_costs.append(cost)
+    
+    unique_makespans = np.array(unique_makespans)
+    unique_costs = np.array(unique_costs)
+    
+    # Ensure that the x-values are strictly increasing.
+    if not np.all(np.diff(unique_makespans) > 0):
+        raise ValueError("Unique makespans are not strictly increasing.")
+    
+    # 5. Fit a smooth, monotonic curve (using PCHIP) through these points.
+    smooth_curve = PchipInterpolator(unique_makespans, unique_costs)
+    
+    return unique_makespans, unique_costs, smooth_curve, pareto_archive
+
+
+
 
 # =============================================================================
 # ---------------------------- Main Comparison ------------------------------
@@ -546,6 +641,28 @@ if __name__ == '__main__':
     
     # ----------------- Individual Pareto Front Plots -----------------
     # For HHO:
+    sorted_makespans, sorted_costs, smooth_curve, pareto_archive = compute_pareto_front_smooth(archive_pso, archive_hho)
+    pareto_objs = np.array([obj for (_, obj) in pareto_archive])
+    makespans = pareto_objs[:, 0]
+    costs = pareto_objs[:, 1]
+    avg_utils = -pareto_objs[:, 2]  # Convert back to positive utilization
+    
+    # Create a 3D scatter plot.
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    scatter = ax.scatter(makespans, costs, avg_utils, c=avg_utils, cmap='viridis', s=80, edgecolor='k')
+    
+    ax.set_xlabel("Makespan (hours)")
+    ax.set_ylabel("Total Cost")
+    ax.set_zlabel("Average Utilization")
+    ax.set_title("3D Pareto Front (Non-Dominated Solutions)")
+    
+    cbar = plt.colorbar(scatter, pad=0.1)
+    cbar.set_label("Average Utilization")
+    
+    plt.show()
+
     if archive_hho:
         hho_objs = np.array([entry[1] for entry in archive_hho])
         hho_makespans = hho_objs[:, 0]
@@ -553,6 +670,10 @@ if __name__ == '__main__':
         hho_utils = -hho_objs[:, 2]  # Convert negative utilization to average utilization
         plt.figure(figsize=(8,6))
         sc = plt.scatter(hho_makespans, hho_costs, c=hho_utils, cmap='viridis', s=80, edgecolor='k')
+        
+        x_dense = np.linspace(np.min(sorted_makespans), np.max(sorted_makespans), 200)
+        y_dense = smooth_curve(x_dense)
+        plt.plot(x_dense, y_dense, 'r-', linewidth=2, label="Smooth Pareto Front")
         plt.xlabel("Makespan (hours)")
         plt.ylabel("Total Cost")
         plt.title("HHO Pareto Front")
@@ -618,6 +739,42 @@ if __name__ == '__main__':
         plt.show()
     
     # ----------------- Display Final Schedules via Gantt Charts -----------------
-    if best_schedule_hho is not None:
-        plot_gantt(best_schedule_hho, f"Optimized Schedule (HHO)\nMakespan: {best_makespan_hho:.2f} hrs")
-    plot_gantt(best_schedule_pso, f"Optimized Schedule (PSO)\nMakespan: {best_makespan_pso:.2f} hrs")
+    
+    #best_makespan_index = np.argmin(hho_makespans)
+    #best_makespan_solution = archive_hho[best_makespan_index][0]
+    #best_schedule, best_makespan = compute_schedule(best_makespan_solution, tasks, workers)
+    #plot_gantt(best_schedule, f"Optimized Schedule (HHO)\nMakespan: {hho_makespans[best_makespan_index]:.2f} hrs Cost: {hho_costs[best_makespan_index]:.2f}")
+#
+    #best_makespan_index = np.argmin(pso_makespans)
+    #best_makespan_solution = archive_pso[best_makespan_index][0]
+    #best_schedule, best_makespan = compute_schedule(best_makespan_solution, tasks, workers)
+    #plot_gantt(best_schedule, f"Optimized Schedule (PSO)\nMakespan: {pso_makespans[best_makespan_index]:.2f} hrs Cost: {pso_costs[best_makespan_index]:.2f}")
+    #best_makespan_index = np.argmin(hho_costs)
+    #best_makespan_solution = archive_hho[best_makespan_index][0]
+    #best_schedule, best_makespan = compute_schedule(best_makespan_solution, tasks, workers)
+    #plot_gantt(best_schedule, f"Optimized Schedule (HHO)\nMakespan: {hho_makespans[best_makespan_index]:.2f} hrs Cost: {hho_costs[best_makespan_index]:.2f}")
+#
+    #best_makespan_index = np.argmin(pso_costs)
+    #best_makespan_solution = archive_pso[best_makespan_index][0]
+    #best_schedule, best_makespan = compute_schedule(best_makespan_solution, tasks, workers)
+    #plot_gantt(best_schedule, f"Optimized Schedule (PSO)\nMakespan: {pso_makespans[best_makespan_index]:.2f} hrs Cost: {pso_costs[best_makespan_index]:.2f}")
+#
+    #makespan_norm = (hho_makespans - np.min(hho_makespans)) / (np.max(hho_makespans) - np.min(hho_makespans) + 1e-6)
+    #cost_norm = (hho_costs - np.min(hho_costs)) / (np.max(hho_costs) - np.min(hho_costs) + 1e-6)
+    #
+    ## Compute Euclidean distance from the ideal point (0, 0) in the normalized space.
+    #tradeoff_metric = np.sqrt(makespan_norm**2 + cost_norm**2)
+    #recommended_index = np.argmin(tradeoff_metric)
+    #recommended_solution = archive_hho[recommended_index][0]
+    #recommended_schedule, recommended_makespan = compute_schedule(recommended_solution, tasks, workers)
+    #plot_gantt(recommended_schedule, f"Optimized Schedule (Recommended Solution (HHO))\nMakespan: {hho_makespans[best_makespan_index]:.2f} hrs Cost: {hho_costs[best_makespan_index]:.2f}")
+#
+    #makespan_norm = (pso_makespans - np.min(pso_makespans)) / (np.max(pso_makespans) - np.min(pso_makespans) + 1e-6)
+    #cost_norm = (pso_costs - np.min(pso_costs)) / (np.max(pso_costs) - np.min(pso_costs) + 1e-6)
+    #
+    ## Compute Euclidean distance from the ideal point (0, 0) in the normalized space.
+    #tradeoff_metric = np.sqrt(makespan_norm**2 + cost_norm**2)
+    #recommended_index = np.argmin(tradeoff_metric)
+    #recommended_solution = archive_hho[recommended_index][0]
+    #recommended_schedule, recommended_makespan = compute_schedule(recommended_solution, tasks, workers)
+    #plot_gantt(recommended_schedule, f"Optimized Schedule (Recommended Solution (PSO))\nMakespan: {pso_makespans[best_makespan_index]:.2f} hrs Cost: {pso_costs[best_makespan_index]:.2f}")
