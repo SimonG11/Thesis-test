@@ -849,7 +849,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
       - Adaptive evaporation: pheromone trails are evaporated more aggressively when variance is low.
       - Extended local search: if no improvement with ±1 perturbation, try ±2 perturbations.
       - Diversity injection: if no improvement for a given number of iterations, a fraction of ants are reinitialized.
-      - **Ranking-based Pheromone Deposit using Crowding Distance**: Instead of using a dynamic objective imbalance penalty,
+      - Ranking-based Pheromone Deposit using Crowding Distance: Instead of using a dynamic objective imbalance penalty,
         the pheromone deposit is scaled by a factor derived from the crowding distance of archive solutions. This reward
         mechanism promotes deposition for solutions in less-crowded (i.e. diverse) regions of the Pareto front. Moreover,
         a decay factor (based on the iteration number) is used to shift from exploration to exploitation over time.
@@ -863,13 +863,15 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
         heuristic = []
         for i in range(dim):
             possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
+            # Ensure initial pheromones are positive.
             pheromone.append({v: 1.0 for v in possible_values})
             h_dict = {}
             task = tasks[i]
             for v in possible_values:
                 new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (v - 1))
                 duration = new_effort / v
-                h_dict[v] = 1.0 / duration
+                # Use nan_to_num to guard against potential numerical issues.
+                h_dict[v] = np.nan_to_num(1.0 / duration, nan=0.0, posinf=0.0, neginf=0.0)
             heuristic.append(h_dict)
         colony_pheromones.append(pheromone)
         colony_heuristics.append(heuristic)
@@ -897,11 +899,16 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     possible_values = list(pheromone[i].keys())
                     probs = []
                     for v in possible_values:
-                        tau = pheromone[i][v]
-                        h_val = heuristic[i][v]
+                        tau = np.nan_to_num(pheromone[i][v], nan=0.0)
+                        h_val = np.nan_to_num(heuristic[i][v], nan=0.0)
+                        # Both values are raised to the given powers.
                         probs.append((tau ** alpha) * (h_val ** beta))
                     total = sum(probs)
-                    probs = [p / total if total > 0 else 1 / len(probs) for p in probs]
+                    # Robust normalization: if total is not finite or zero, use uniform probabilities.
+                    if not np.isfinite(total) or total == 0:
+                        probs = [1.0 / len(probs)] * len(probs)
+                    else:
+                        probs = [p / total for p in probs]
                     r = random.random()
                     cumulative = 0.0
                     chosen = possible_values[-1]
