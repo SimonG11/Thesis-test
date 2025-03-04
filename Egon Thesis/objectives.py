@@ -3,10 +3,12 @@ import numpy as np
 from typing import List
 from rcpsp_model import RCPSPModel
 
+
 def objective_makespan(x: np.ndarray, model: RCPSPModel) -> float:
     """Objective 1: Minimize project makespan."""
     _, ms = model.compute_schedule(x)
     return ms
+
 
 def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
     """Objective 2: Minimize total labor cost."""
@@ -24,6 +26,7 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         total_cost += duration * alloc * wage_rate
     return total_cost
 
+
 def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
     """
     Objective 3: Maximize average resource utilization.
@@ -39,6 +42,7 @@ def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
         alloc = max(task["min"], min(effective_max, alloc))
         utils.append(alloc / task["max"])
     return -np.mean(utils)
+
 
 def multi_objective(x: np.ndarray, model: RCPSPModel) -> np.ndarray:
     """

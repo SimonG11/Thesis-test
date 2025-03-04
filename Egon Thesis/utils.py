@@ -1,11 +1,14 @@
 # utils.py
 import numpy as np
 import random, math
+from typing import List, Tuple
+
 
 def initialize_seed(seed: int = 42) -> None:
     """Initialize random seeds for reproducibility."""
     np.random.seed(seed)
     random.seed(seed)
+
 
 def dominates(obj_a: np.ndarray, obj_b: np.ndarray, epsilon: float = 1e-6) -> bool:
     """
@@ -19,6 +22,28 @@ def dominates(obj_a: np.ndarray, obj_b: np.ndarray, epsilon: float = 1e-6) -> bo
     strictly_less = np.any(obj_a < obj_b - epsilon)
     return less_equal and strictly_less
 
+
+def get_true_pareto_points(points: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
+    """
+    Given a set of points (each row is an objective vector), return only the non-dominated points.
+    
+    Parameters:
+      points: A NumPy array of shape (n_points, n_objectives).
+      epsilon: Tolerance for comparing objectives.
+    
+    Returns:
+      A NumPy array containing only the non-dominated (true Pareto front) points.
+    """
+    n = points.shape[0]
+    dominated = np.zeros(n, dtype=bool)
+    for i in range(n):
+        for j in range(n):
+            if i != j and dominates(points[j], points[i], epsilon):
+                dominated[i] = True
+                break
+    return points[~dominated]
+
+
 def levy(dim: int) -> np.ndarray:
     """
     Compute a Levy flight step for a given dimensionality.
@@ -29,6 +54,7 @@ def levy(dim: int) -> np.ndarray:
     u = 0.01 * np.random.randn(dim) * sigma
     v = np.random.randn(dim)
     return u / (np.power(np.abs(v), 1 / beta))
+
 
 def find_earliest_start(earliest: float, duration: float, allocated: int,
                         scheduled_tasks: list, capacity: int, resource: str, epsilon: float = 1e-6) -> float:
@@ -66,6 +92,7 @@ def find_earliest_start(earliest: float, duration: float, allocated: int,
     last_finish = max(task["finish"] for task in tasks_r)
     return last_finish + epsilon
 
+
 def chaotic_map_initialization(lb: np.ndarray, ub: np.ndarray, dim: int, n_agents: int) -> np.ndarray:
     """
     Initialize the population using a logistic chaotic map.
@@ -78,3 +105,47 @@ def chaotic_map_initialization(lb: np.ndarray, ub: np.ndarray, dim: int, n_agent
             x = r * x * (1 - x)
         population[i, :] = lb + x * (ub - lb)
     return population
+
+
+def compute_extremes(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
+                     margin: float = 0.05) -> List[Tuple[float, float]]:
+    """
+    Compute extreme bounds for each objective from a list of archives.
+    
+    For objectives 0 (cost) and 1 (makespan), combine all objective vectors,
+    find the minimum and maximum values, and extend these by a given margin.
+    For objective 2 (resource utilization, which is negated), return the fixed extremes (-1, 0).
+    
+    Parameters:
+        archives: A list of archives, each being a list of (decision_vector, objective_vector) tuples.
+        margin: A fraction (e.g., 0.05 for 5%) by which to extend the observed range.
+    
+    Returns:
+        A list of three tuples: [(ideal0, upper0), (ideal1, upper1), (ideal2, upper2)],
+        where ideal_m is the lower (ideal) bound for objective m and upper_m is the upper bound.
+    """
+    # Collect all objective vectors for cost and makespan (objectives 0 and 1).
+    all_objs = []
+    for archive in archives:
+        for _, obj in archive:
+            all_objs.append(obj)
+    if not all_objs:
+        raise ValueError("No objective data found in archives.")
+    
+    all_objs = np.array(all_objs)  # shape (N, 3)
+    
+    extremes = []
+    # For objective 0 (cost) and objective 1 (makespan)
+    for m in range(2):
+        observed_min = np.min(all_objs[:, m])
+        observed_max = np.max(all_objs[:, m])
+        range_val = observed_max - observed_min
+        # Extend the bounds by margin * range
+        ideal_bound = observed_min - margin * range_val
+        upper_bound = observed_max + margin * range_val
+        extremes.append((ideal_bound, upper_bound))
+    
+    # For objective 2 (resource utilization, which is negated), we fix extremes.
+    extremes.append((-1, 0))
+    
+    return extremes

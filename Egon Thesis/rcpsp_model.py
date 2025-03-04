@@ -3,6 +3,7 @@ from typing import List, Tuple, Dict, Any
 import numpy as np
 from utils import find_earliest_start
 
+
 class RCPSPModel:
     """
     A model representing the Resource-Constrained Project Scheduling Problem (RCPSP).

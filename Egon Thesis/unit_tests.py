@@ -5,6 +5,7 @@ from metrics import update_archive_with_crowding
 from rcpsp_model import RCPSPModel
 from tasks import get_default_tasks
 
+
 def run_unit_tests() -> None:
     # Test the archive update function.
     sol1 = np.array([1, 2, 3])
@@ -30,6 +31,7 @@ def run_unit_tests() -> None:
         logging.info("Unit Test Passed: RCPSP schedule computed successfully.")
     else:
         logging.error("Unit Test Failed: RCPSP schedule computation issue.")
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
