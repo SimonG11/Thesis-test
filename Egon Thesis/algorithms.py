@@ -3,8 +3,9 @@ import numpy as np
 import random, math
 from typing import List, Tuple, Callable, Optional
 from utils import chaotic_map_initialization, levy
-from metrics import update_archive_with_crowding
+from metrics import update_archive_with_crowding, compute_crowding_distance
 from objectives import multi_objective
+
 
 def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
@@ -64,6 +65,7 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
         t += 1
     return archive, progress
 
+
 class PSO:
     """
     Adaptive MOPSO with adaptive inertia, periodic mutation, and crowding-based archive updates.
@@ -111,11 +113,9 @@ class PSO:
         for particle in self.swarm:
             pos = particle['position'].copy()
             obj_val = particle['obj'].copy()
-            from metrics import update_archive_with_crowding
             self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
 
     def proportional_distribution(self) -> List[np.ndarray]:
-        from metrics import compute_crowding_distance
         if not self.archive:
             return [random.choice(self.swarm)['position'] for _ in range(self.pop)]
         distances = compute_crowding_distance(self.archive)
@@ -147,7 +147,6 @@ class PSO:
         for oc in [oc1, oc2]:
             oc = np.array([int(np.clip(val, self.lb[i], self.ub[i])) for i, val in enumerate(oc)])
             obj_val = self.evaluate(oc)
-            from metrics import update_archive_with_crowding
             self.archive = update_archive_with_crowding(self.archive, (oc, obj_val))
 
     def disturbance_operation(self, particle: dict) -> None:
@@ -167,7 +166,6 @@ class PSO:
             particle['obj'] = self.evaluate(new_pos)
 
     def move(self) -> None:
-        from metrics import update_archive_with_crowding
         self.iteration += 1
         leaders = self.proportional_distribution()
         for idx, particle in enumerate(self.swarm):
@@ -212,6 +210,7 @@ class PSO:
             best_ms = min(p['obj'][0] for p in self.swarm)
             convergence.append(best_ms)
         return convergence
+
 
 def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     tasks: List[dict], workers: dict,

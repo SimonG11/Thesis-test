@@ -2,6 +2,7 @@
 from typing import List, Dict, Any
 import random
 
+
 def get_default_tasks() -> List[Dict[str, Any]]:
     """
     Return a fixed list of tasks for the RCPSP.
@@ -18,6 +19,7 @@ def get_default_tasks() -> List[Dict[str, Any]]:
         {"id": 9, "task_name": "Training", "base_effort": 50, "min": 1, "max": 14, "dependencies": [7, 8], "resource": "Tester"},
         {"id": 10, "task_name": "Deployment", "base_effort": 70, "min": 2, "max": 14, "dependencies": [7, 9], "resource": "Manager"}
     ]
+
 
 def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[str, Any]]:
     """
