@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
 """
 Improved Multi-Objective Comparison for RCPSP using Adaptive MOHHO, Adaptive MOPSO, and Improved MOACO
+with Extended Real-World Constraints
 
 This script implements and compares three metaheuristic algorithms for the Resource-Constrained 
-Project Scheduling Problem (RCPSP) with multiple objectives. The implementation has been updated 
-to incorporate advanced mechanisms from the literature, including:
- - Non-linear adaptive parameter tuning (using cosine schedules and self-adaptation)
- - Enhanced archive management with diversity preservation (inspired by NSGA-II crowding distance)
- - Periodic local search and diversity-driven injection of new hawks
- - Multi-colony pheromone updates with periodic reinitialization in MOACO
-
-References:
- - Heidari, A., et al. "Harris Hawks Optimization: Algorithm and Applications." [Original HHO]
- - Coello, C.A.C., & Lechuga, M.S. "MOPSO: A Proposal for Multiple Objective Particle Swarm Optimization." [MOPSO base]
- - Dorigo, M., & Stützle, T. "Ant Colony Optimization." [ACO base]
- - Deb, K. "Multi-Objective Optimization Using Evolutionary Algorithms." [NSGA-II crowding]
- - Sun, Y., et al. "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity." [Chaotic init in MOPSO]
- - Yüzgeç, U., & Kuşoğlu, M. "An Improved Multi-Objective Harris Hawk Optimization with Blank Angle Region Enhanced Search." [MOHHO enhancements]
+Project Scheduling Problem (RCPSP) with multiple objectives. The extended model includes:
+  - Deadlines, priorities, and various delay factors (vendor, compliance, quality, material, etc.)
+  - Risk multipliers (country risk, complexity) and cost risk/energy multipliers to model financial constraints.
+  - Workload balance as an objective.
+  
+The multi-objective vector consists of:
+  [Makespan, Total Cost, -Average Utilization, Weighted Tardiness, Workload Balance]
 
 Author: Simon Gottschalk
 Date: 2025-02-13
@@ -26,15 +20,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random, math, time, copy, json, logging
 from typing import List, Tuple, Dict, Any, Callable, Optional
-from mpl_toolkits.mplot3d import Axes3D  # For 3D plotting
-from scipy.stats import f_oneway  # For ANOVA
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.stats import f_oneway
 
 # ----------------------------- Logging Setup -----------------------------
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # ----------------------------- Reproducibility -----------------------------
 def initialize_seed(seed: int = 42) -> None:
-    """Initialize random seeds for reproducibility."""
     np.random.seed(seed)
     random.seed(seed)
 
@@ -43,25 +36,12 @@ initialize_seed(42)
 # =============================================================================
 # -------------------------- Helper Functions -------------------------------
 # =============================================================================
-
 def dominates(obj_a: np.ndarray, obj_b: np.ndarray, epsilon: float = 1e-6) -> bool:
-    """
-    Check if solution A dominates solution B in a minimization context.
-    Two objective values are considered equal if their difference is less than epsilon.
-    
-    A dominates B if every objective in A is <= corresponding objective in B,
-    with at least one strictly less (by more than epsilon).
-    """
     less_equal = np.all(obj_a <= obj_b + epsilon)
     strictly_less = np.any(obj_a < obj_b - epsilon)
     return less_equal and strictly_less
 
 def levy(dim: int) -> np.ndarray:
-    """
-    Compute a Levy flight step for a given dimensionality.
-    
-    Levy flights allow for occasional large jumps in the search space to help escape local optima.
-    """
     beta = 1.5
     sigma = (math.gamma(1 + beta) * math.sin(math.pi * beta / 2) /
              (math.gamma((1 + beta) / 2) * beta * 2 ** ((beta - 1) / 2))) ** (1 / beta)
@@ -72,17 +52,9 @@ def levy(dim: int) -> np.ndarray:
 def find_earliest_start(earliest: float, duration: float, allocated: int,
                         scheduled_tasks: List[Dict[str, Any]],
                         capacity: int, resource: str, epsilon: float = 1e-6) -> float:
-    """
-    Determine the earliest feasible start time for a task given resource constraints.
-    
-    Inspired by the Serial Schedule Generation Scheme (SSGS), this function checks candidate 
-    time windows (based on existing task start/finish times) and returns the earliest time when 
-    the required resource capacity is available.
-    """
     tasks_r = [t for t in scheduled_tasks if t.get("resource") == resource]
     if not tasks_r:
         return earliest
-
     candidate_times = {earliest}
     for task in tasks_r:
         if task["start"] >= earliest:
@@ -90,7 +62,6 @@ def find_earliest_start(earliest: float, duration: float, allocated: int,
         if task["finish"] >= earliest:
             candidate_times.add(task["finish"])
     candidate_times = sorted(candidate_times)
-
     for t in candidate_times:
         events = [t, t + duration]
         for task in tasks_r:
@@ -106,22 +77,10 @@ def find_earliest_start(earliest: float, duration: float, allocated: int,
                 break
         if feasible:
             return t
-
     last_finish = max(task["finish"] for task in tasks_r)
     return last_finish + epsilon
 
-# -----------------------------------------------------------------------------
-# Chaotic Initialization using Logistic Map
-# Enhancement: Chaotic initialization improves the spread of initial solutions.
-# Source: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-# -----------------------------------------------------------------------------
 def chaotic_map_initialization(lb: np.ndarray, ub: np.ndarray, dim: int, n_agents: int) -> np.ndarray:
-    """
-    Initialize the population using a logistic chaotic map.
-    
-    The logistic map (x_{n+1} = 4*x_n*(1 - x_n) for r=4) generates chaotic sequences,
-    resulting in a diverse distribution of initial solutions.
-    """
     r = 4.0
     population = np.zeros((n_agents, dim))
     for i in range(n_agents):
@@ -131,40 +90,101 @@ def chaotic_map_initialization(lb: np.ndarray, ub: np.ndarray, dim: int, n_agent
         population[i, :] = lb + x * (ub - lb)
     return population
 
-# -----------------------------------------------------------------------------
-# Default Task Definition for Reproducibility
-# -----------------------------------------------------------------------------
-def get_default_tasks() -> List[Dict[str, Any]]:
+# =============================================================================
+# ----------------------- Extended Task Generation --------------------------
+# =============================================================================
+def get_extended_tasks() -> List[Dict[str, Any]]:
     """
-    Return a fixed list of tasks for the RCPSP.
-    
-    This fixed instance supports reproducible experiments and benchmark comparisons.
+    Returns a set of tasks with additional fields for various constraints.
+    For each task, attributes (with defaults if not provided) include:
+      - deadline, priority
+      - vendor_delay, compliance_delay, quality_assurance_delay, skill_gap_delay,
+        material_delay, equipment_delay, contingency_time, scope_creep_delay,
+        communication_delay, env_delay
+      - country_risk_factor, complexity_factor
+      - cost_risk_factor, energy_cost_multiplier
     """
     return [
-        {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80,  "min": 1, "max": 14, "dependencies": [],         "resource": "Manager"},
-        {"id": 2, "task_name": "System Design",          "base_effort": 100, "min": 1, "max": 14, "dependencies": [1],        "resource": "Manager"},
-        {"id": 3, "task_name": "Module 1 Development",   "base_effort": 150, "min": 1, "max": 14, "dependencies": [2],        "resource": "Developer"},
-        {"id": 4, "task_name": "Module 2 Development",   "base_effort": 150, "min": 1, "max": 14, "dependencies": [2],        "resource": "Developer"},
-        {"id": 5, "task_name": "Integration",            "base_effort": 100, "min": 1, "max": 14, "dependencies": [4],        "resource": "Developer"},
-        {"id": 6, "task_name": "Testing",                "base_effort": 100, "min": 1, "max": 14, "dependencies": [4],        "resource": "Tester"},
-        {"id": 7, "task_name": "Acceptance Testing",     "base_effort": 100, "min": 1, "max": 14, "dependencies": [4],        "resource": "Tester"},
-        {"id": 8, "task_name": "Documentation",          "base_effort": 100, "min": 1, "max": 14, "dependencies": [4],        "resource": "Developer"},
-        {"id": 9, "task_name": "Training",               "base_effort": 50,  "min": 1, "max": 14, "dependencies": [7, 8],     "resource": "Tester"},
-        {"id": 10,"task_name": "Deployment",             "base_effort": 70,  "min": 2, "max": 14, "dependencies": [7, 9],     "resource": "Manager"}
+        {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80,  "min": 1, "max": 14,
+         "dependencies": [], "resource": "Manager", "deadline": 20, "priority": 1,
+         "vendor_delay": 0, "compliance_delay": 0, "quality_assurance_delay": 0,
+         "skill_gap_delay": 0, "material_delay": 0, "equipment_delay": 0,
+         "contingency_time": 1, "scope_creep_delay": 0, "communication_delay": 0, "env_delay": 0,
+         "country_risk_factor": 1, "complexity_factor": 1, "cost_risk_factor": 0, "energy_cost_multiplier": 0},
+        {"id": 2, "task_name": "System Design", "base_effort": 100, "min": 1, "max": 14,
+         "dependencies": [1], "resource": "Manager", "deadline": 40, "priority": 1,
+         "vendor_delay": 0, "compliance_delay": 2, "quality_assurance_delay": 0,
+         "skill_gap_delay": 0, "material_delay": 0, "equipment_delay": 0,
+         "contingency_time": 1, "scope_creep_delay": 1, "communication_delay": 0, "env_delay": 0,
+         "country_risk_factor": 1.05, "complexity_factor": 1.1, "cost_risk_factor": 0.02, "energy_cost_multiplier": 0},
+        {"id": 3, "task_name": "Module 1 Development", "base_effort": 150, "min": 1, "max": 14,
+         "dependencies": [2], "resource": "Developer", "deadline": 80, "priority": 2,
+         "vendor_delay": 1, "compliance_delay": 0, "quality_assurance_delay": 0,
+         "skill_gap_delay": 1, "material_delay": 0, "equipment_delay": 0,
+         "contingency_time": 2, "scope_creep_delay": 0, "communication_delay": 0, "env_delay": 0,
+         "country_risk_factor": 1.1, "complexity_factor": 1.2, "cost_risk_factor": 0.03, "energy_cost_multiplier": 0},
+        {"id": 4, "task_name": "Module 2 Development", "base_effort": 150, "min": 1, "max": 14,
+         "dependencies": [2], "resource": "Developer", "deadline": 80, "priority": 2,
+         "vendor_delay": 1, "compliance_delay": 0, "quality_assurance_delay": 0,
+         "skill_gap_delay": 1, "material_delay": 0, "equipment_delay": 0,
+         "contingency_time": 2, "scope_creep_delay": 0, "communication_delay": 0, "env_delay": 0,
+         "country_risk_factor": 1.1, "complexity_factor": 1.2, "cost_risk_factor": 0.03, "energy_cost_multiplier": 0},
+        {"id": 5, "task_name": "Integration", "base_effort": 100, "min": 1, "max": 14,
+         "dependencies": [4], "resource": "Developer", "deadline": 100, "priority": 3,
+         "vendor_delay": 0, "compliance_delay": 0, "quality_assurance_delay": 0,
+         "skill_gap_delay": 0, "material_delay": 1, "equipment_delay": 0,
+         "contingency_time": 1, "scope_creep_delay": 1, "communication_delay": 0, "env_delay": 0,
+         "country_risk_factor": 1, "complexity_factor": 1.1, "cost_risk_factor": 0.01, "energy_cost_multiplier": 0},
+        {"id": 6, "task_name": "Testing", "base_effort": 100, "min": 1, "max": 14,
+         "dependencies": [4], "resource": "Tester", "deadline": 110, "priority": 2,
+         "vendor_delay": 0, "compliance_delay": 0, "quality_assurance_delay": 2,
+         "skill_gap_delay": 0, "material_delay": 0, "equipment_delay": 1,
+         "contingency_time": 1, "scope_creep_delay": 0, "communication_delay": 0, "env_delay": 0,
+         "country_risk_factor": 1, "complexity_factor": 1, "cost_risk_factor": 0.02, "energy_cost_multiplier": 0},
+        {"id": 7, "task_name": "Acceptance Testing", "base_effort": 100, "min": 1, "max": 14,
+         "dependencies": [4], "resource": "Tester", "deadline": 110, "priority": 2,
+         "vendor_delay": 0, "compliance_delay": 0, "quality_assurance_delay": 2,
+         "skill_gap_delay": 0, "material_delay": 0, "equipment_delay": 1,
+         "contingency_time": 1, "scope_creep_delay": 0, "communication_delay": 0, "env_delay": 0,
+         "country_risk_factor": 1, "complexity_factor": 1, "cost_risk_factor": 0.02, "energy_cost_multiplier": 0},
+        {"id": 8, "task_name": "Documentation", "base_effort": 100, "min": 1, "max": 14,
+         "dependencies": [4], "resource": "Developer", "deadline": 90, "priority": 4,
+         "vendor_delay": 0, "compliance_delay": 0, "quality_assurance_delay": 0,
+         "skill_gap_delay": 0, "material_delay": 0, "equipment_delay": 0,
+         "contingency_time": 1, "scope_creep_delay": 2, "communication_delay": 1, "env_delay": 0,
+         "country_risk_factor": 1, "complexity_factor": 1, "cost_risk_factor": 0.01, "energy_cost_multiplier": 0},
+        {"id": 9, "task_name": "Training", "base_effort": 50, "min": 1, "max": 14,
+         "dependencies": [7, 8], "resource": "Tester", "deadline": 120, "priority": 3,
+         "vendor_delay": 0, "compliance_delay": 0, "quality_assurance_delay": 0,
+         "skill_gap_delay": 0, "material_delay": 0, "equipment_delay": 0,
+         "contingency_time": 1, "scope_creep_delay": 0, "communication_delay": 1, "env_delay": 0,
+         "country_risk_factor": 1, "complexity_factor": 1, "cost_risk_factor": 0.01, "energy_cost_multiplier": 0},
+        {"id": 10, "task_name": "Deployment", "base_effort": 70, "min": 2, "max": 14,
+         "dependencies": [7, 9], "resource": "Manager", "deadline": 130, "priority": 1,
+         "vendor_delay": 0, "compliance_delay": 0, "quality_assurance_delay": 0,
+         "skill_gap_delay": 0, "material_delay": 0, "equipment_delay": 0,
+         "contingency_time": 2, "scope_creep_delay": 0, "communication_delay": 0, "env_delay": 1,
+         "country_risk_factor": 1.05, "complexity_factor": 1.1, "cost_risk_factor": 0.02, "energy_cost_multiplier": 0.05}
     ]
 
 # =============================================================================
-# -------------------------- RCPSP Model Definition -------------------------
+# ------------------ Extended RCPSP Model Definition ------------------------
 # =============================================================================
-
-class RCPSPModel:
+class ExtendedRCPSPModel:
     """
-    A model representing the Resource-Constrained Project Scheduling Problem (RCPSP).
-
-    Attributes:
-        tasks (List[Dict]): List of task definitions.
-        workers (Dict[str, int]): Dictionary specifying available workers per resource type.
-        worker_cost (Dict[str, int]): Dictionary specifying cost per man–hour for each resource.
+    Extended RCPSP model incorporating additional delays and risk factors.
+    The effective duration for each task is computed as:
+    
+      effective_duration = (base_effort_adjusted / allocation * complexity_factor * country_risk_factor)
+                           + (sum of extra delays)
+                           
+    Extra delays include vendor_delay, compliance_delay, quality_assurance_delay,
+    skill_gap_delay, material_delay, equipment_delay, contingency_time, scope_creep_delay,
+    communication_delay, and env_delay.
+    
+    For cost, the effective cost is:
+    
+      effective_cost = effective_duration * allocation * wage_rate * (1 + cost_risk_factor + energy_cost_multiplier)
     """
     def __init__(self, tasks: List[Dict[str, Any]], 
                  workers: Dict[str, int],
@@ -174,122 +194,130 @@ class RCPSPModel:
         self.worker_cost = worker_cost
 
     def compute_schedule(self, x: np.ndarray) -> Tuple[List[Dict[str, Any]], float]:
-        """
-        Compute a feasible schedule using a Serial Schedule Generation Scheme (SSGS).
-
-        Given an allocation vector 'x', tasks are scheduled based on their dependencies and resource constraints,
-        ensuring an active schedule (i.e., no task can start earlier without delaying others).
-
-        Returns:
-            schedule: List of tasks with timing details.
-            makespan: Overall finish time of the project.
-        """
         schedule = []
         finish_times: Dict[int, float] = {}
         for task in self.tasks:
             tid = task["id"]
-            resource_type = task["resource"]
-            capacity = self.workers[resource_type]
+            resource = task["resource"]
+            capacity = self.workers[resource]
             effective_max = min(task["max"], capacity)
             alloc = int(round(x[tid - 1]))
             alloc = max(task["min"], min(effective_max, alloc))
-            new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
-            duration = new_effort / alloc
+            # Basic duration calculation
+            duration_base = (task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))) / alloc
+            # Extra delays from various constraints
+            extra_delay = (task.get("vendor_delay", 0) + task.get("compliance_delay", 0) +
+                           task.get("quality_assurance_delay", 0) + task.get("skill_gap_delay", 0) +
+                           task.get("material_delay", 0) + task.get("equipment_delay", 0) +
+                           task.get("contingency_time", 0) + task.get("scope_creep_delay", 0) +
+                           task.get("communication_delay", 0) + task.get("env_delay", 0))
+            complexity = task.get("complexity_factor", 1)
+            country_factor = task.get("country_risk_factor", 1)
+            effective_duration = (duration_base * complexity * country_factor) + extra_delay
+            # Respect dependencies
             earliest = max([finish_times[dep] for dep in task["dependencies"]]) if task["dependencies"] else 0
-            candidate_start = find_earliest_start(earliest, duration, alloc, schedule, capacity, resource_type)
-            start_time = candidate_start
-            finish_time = start_time + duration
+            start_time = find_earliest_start(earliest, effective_duration, alloc, schedule, capacity, resource)
+            finish_time = start_time + effective_duration
             finish_times[tid] = finish_time
+            # Tardiness if deadline is set
+            deadline = task.get("deadline")
+            tardiness = max(0.0, finish_time - deadline) if deadline is not None else 0.0
             schedule.append({
                 "task_id": tid,
                 "task_name": task["task_name"],
                 "start": start_time,
                 "finish": finish_time,
-                "duration": duration,
+                "duration": effective_duration,
                 "workers": alloc,
-                "resource": resource_type
+                "resource": resource,
+                "deadline": deadline,
+                "priority": task.get("priority", 1),
+                "tardiness": tardiness
             })
         makespan = max(item["finish"] for item in schedule)
         return schedule, makespan
 
     def baseline_allocation(self) -> Tuple[List[Dict[str, Any]], float]:
-        """
-        Generate a baseline schedule by assigning the minimum required workers to all tasks.
-        
-        This greedy allocation strategy serves as a baseline for comparison.
-        """
         x = np.array([task["min"] for task in self.tasks])
         return self.compute_schedule(x)
 
 # =============================================================================
-# ----------------------- Objective Functions (Using Model) -----------------
+# ------------------- Extended Objective Functions --------------------------
 # =============================================================================
-
-def objective_makespan(x: np.ndarray, model: RCPSPModel) -> float:
-    """Objective 1: Minimize project makespan."""
+def objective_makespan(x: np.ndarray, model: ExtendedRCPSPModel) -> float:
     _, ms = model.compute_schedule(x)
     return ms
 
-def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
-    """Objective 2: Minimize total labor cost."""
+def objective_total_cost(x: np.ndarray, model: ExtendedRCPSPModel) -> float:
     total_cost = 0.0
     for task in model.tasks:
         tid = task["id"]
-        resource_type = task["resource"]
-        capacity = model.workers[resource_type]
+        resource = task["resource"]
+        capacity = model.workers[resource]
         effective_max = min(task["max"], capacity)
         alloc = round(x[tid - 1] * 2) / 2
         alloc = max(task["min"], min(effective_max, alloc))
-        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
-        duration = new_effort / alloc
-        wage_rate = model.worker_cost[resource_type]
-        total_cost += duration * alloc * wage_rate
+        duration_base = (task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))) / alloc
+        extra_delay = (task.get("vendor_delay", 0) + task.get("compliance_delay", 0) +
+                       task.get("quality_assurance_delay", 0) + task.get("skill_gap_delay", 0) +
+                       task.get("material_delay", 0) + task.get("equipment_delay", 0) +
+                       task.get("contingency_time", 0) + task.get("scope_creep_delay", 0) +
+                       task.get("communication_delay", 0) + task.get("env_delay", 0))
+        complexity = task.get("complexity_factor", 1)
+        country_factor = task.get("country_risk_factor", 1)
+        effective_duration = (duration_base * complexity * country_factor) + extra_delay
+        cost_multiplier = 1 + task.get("cost_risk_factor", 0) + task.get("energy_cost_multiplier", 0)
+        wage_rate = model.worker_cost[resource]
+        total_cost += effective_duration * alloc * wage_rate * cost_multiplier
     return total_cost
 
-def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
-    """
-    Objective 3: Maximize average resource utilization.
-    
-    (Negated so that all objectives are minimized.)
-    """
+def objective_neg_utilization(x: np.ndarray, model: ExtendedRCPSPModel) -> float:
     utils = []
     for task in model.tasks:
         tid = task["id"]
-        resource_type = task["resource"]
-        capacity = model.workers[resource_type]
+        resource = task["resource"]
+        capacity = model.workers[resource]
         effective_max = min(task["max"], capacity)
         alloc = round(x[tid - 1] * 2) / 2
         alloc = max(task["min"], min(effective_max, alloc))
         utils.append(alloc / task["max"])
     return -np.mean(utils)
 
-def multi_objective(x: np.ndarray, model: RCPSPModel) -> np.ndarray:
-    """
-    Return the multi-objective vector for a given allocation vector x.
-    
-    The vector consists of:
-        [makespan, total cost, -average utilization].
-    """
+def objective_weighted_tardiness(x: np.ndarray, model: ExtendedRCPSPModel) -> float:
+    schedule, _ = model.compute_schedule(x)
+    total_weighted_tardiness = 0.0
+    for task in schedule:
+        if task.get("deadline") is not None:
+            total_weighted_tardiness += task["tardiness"] * task.get("priority", 1)
+    return total_weighted_tardiness
+
+def objective_workload_balance(x: np.ndarray, model: ExtendedRCPSPModel) -> float:
+    schedule, _ = model.compute_schedule(x)
+    resource_usage = {}
+    for task in schedule:
+        res = task["resource"]
+        usage = task["duration"] * task["workers"]
+        resource_usage[res] = resource_usage.get(res, 0) + usage
+    usage_values = list(resource_usage.values())
+    if len(usage_values) <= 1:
+        return 0.0
+    return np.std(usage_values)
+
+def multi_objective_extended(x: np.ndarray, model: ExtendedRCPSPModel) -> np.ndarray:
     return np.array([
         objective_makespan(x, model),
         objective_total_cost(x, model),
-        objective_neg_utilization(x, model)
+        objective_neg_utilization(x, model),
+        objective_weighted_tardiness(x, model),
+        objective_workload_balance(x, model)
     ])
 
 # =============================================================================
 # ----------------------- Performance Metrics -------------------------------
 # =============================================================================
-
 def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
                             reference_point: np.ndarray,
                             num_samples: int = 100) -> float:
-    """
-    Approximate the hypervolume of the archive via Monte Carlo sampling.
-    
-    Hypervolume measures the volume of the objective space dominated by the Pareto front, relative
-    to a reference point. For minimization problems, the reference point should be chosen such that
-    it is dominated by all solutions.
-    """
     if not archive:
         return 0.0
     objs = np.array([entry[1] for entry in archive])
@@ -300,11 +328,6 @@ def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
     return (count / num_samples) * vol
 
 def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
-    """
-    Compute the crowding distance for each solution in the archive.
-    
-    Crowding distance is used to maintain diversity among the non-dominated solutions.
-    """
     if not archive:
         return np.array([])
     objs = np.array([entry[1] for entry in archive])
@@ -323,25 +346,12 @@ def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> n
 
 def same_entry(entry1: Tuple[np.ndarray, np.ndarray],
                entry2: Tuple[np.ndarray, np.ndarray]) -> bool:
-    """Return True if two archive entries are identical (both decision and objective vectors)."""
     return np.array_equal(entry1[0], entry2[0]) and np.array_equal(entry1[1], entry2[1])
 
 def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
                                  new_entry: Tuple[np.ndarray, np.ndarray],
                                  max_archive_size: int = 50,
                                  epsilon: float = 1e-6) -> List[Tuple[np.ndarray, np.ndarray]]:
-    """
-    Update the non-dominated archive with a new entry while preserving diversity.
-    
-    Uses crowding distance to remove the most crowded solution if the archive exceeds max_archive_size.
-    The epsilon parameter allows near-equal objective values to be considered equal.
-    
-    (For further improvements, consider replacing this with a full non-dominated sorting and crowding distance
-    mechanism as used in NSGA-II.)
-    
-    Enhancement: Archive management based on NSGA-II crowding distance.
-    Source: Deb, K. (2002) "Multi-Objective Optimization Using Evolutionary Algorithms."
-    """
     sol_new, obj_new = new_entry
     dominated_flag = False
     removal_list = []
@@ -362,11 +372,6 @@ def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
 
 def compute_generational_distance(archive: List[Tuple[np.ndarray, np.ndarray]],
                                   true_pareto: np.ndarray) -> Optional[float]:
-    """
-    Compute the Generational Distance (GD) between the archive and the true Pareto front.
-    
-    GD measures the average distance from the archive solutions to the closest point on the true Pareto front.
-    """
     if not archive or true_pareto.size == 0:
         return None
     objs = np.array([entry[1] for entry in archive])
@@ -374,25 +379,13 @@ def compute_generational_distance(archive: List[Tuple[np.ndarray, np.ndarray]],
     return np.mean(distances)
 
 def compute_spread(archive: List[Tuple[np.ndarray, np.ndarray]]) -> float:
-    """
-    Compute the spread (diversity) of the archive as the average pairwise Euclidean distance in objective space.
-    """
     if len(archive) < 2:
         return 0.0
     objs = np.array([entry[1] for entry in archive])
     dists = [np.linalg.norm(objs[i] - objs[j]) for i in range(len(objs)) for j in range(i+1, len(objs))]
     return np.mean(dists)
 
-# -----------------------------------------------------------------------------
-# Fixed Reference Point Calculation for Hypervolume Comparison
-# -----------------------------------------------------------------------------
 def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
-    """
-    Compute a fixed reference point based on the union of all solution archives from all algorithms.
-    
-    For minimization problems, the fixed reference point is chosen as the element-wise maximum (nadir)
-    over the union of all final archives. This reference point will be used consistently across algorithms.
-    """
     union_archive = []
     for alg in archives_all:
         for archive in archives_all[alg]:
@@ -404,16 +397,6 @@ def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, 
     return ref_point
 
 def normalized_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]], fixed_ref: np.ndarray) -> float:
-    """
-    Compute the normalized hypervolume as a percentage using a fixed reference point.
-    
-    The normalized hypervolume is defined as:
-        (Hypervolume(archive, fixed_ref) / TotalVolume(ideal, fixed_ref)) * 100
-    where the ideal point is computed as the element-wise minimum of the archive.
-    
-    This percentage indicates the proportion of the available objective space (between the ideal and fixed reference point)
-    that is dominated by the Pareto front.
-    """
     if not archive:
         return 0.0
     objs = np.array([entry[1] for entry in archive])
@@ -427,9 +410,7 @@ def normalized_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]], f
 # =============================================================================
 # ----------------------- Visualization Functions ---------------------------
 # =============================================================================
-
 def plot_gantt(schedule: List[Dict[str, Any]], title: str) -> None:
-    """Plot a Gantt chart for the given schedule."""
     fig, ax = plt.subplots(figsize=(10, 6))
     yticks, yticklabels = [], []
     for i, task in enumerate(schedule):
@@ -450,11 +431,6 @@ def plot_gantt(schedule: List[Dict[str, Any]], title: str) -> None:
     plt.show()
 
 def plot_convergence(metrics_dict: Dict[str, List[float]], metric_name: str) -> None:
-    """
-    Plot boxplots for a given performance metric across different runs.
-    
-    Uses 'tick_labels' for compatibility with newer Matplotlib versions.
-    """
     fig, ax = plt.subplots(figsize=(8, 6))
     data = list(metrics_dict.values())
     ax.boxplot(data, tick_labels=list(metrics_dict.keys()))
@@ -466,11 +442,6 @@ def plot_convergence(metrics_dict: Dict[str, List[float]], metric_name: str) -> 
 def plot_pareto_2d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                    labels: List[str], markers: List[str], colors: List[str],
                    ref_point: Optional[np.ndarray] = None) -> None:
-    """
-    Plot 2D Pareto fronts (Makespan vs. Total Cost) for the provided archives.
-    
-    If a reference point is provided, it is plotted as an 'x' marker for comparison.
-    """
     plt.figure(figsize=(8, 6))
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         if archive:
@@ -489,17 +460,11 @@ def plot_pareto_2d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
 def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                    labels: List[str], markers: List[str], colors: List[str],
                    ref_point: Optional[np.ndarray] = None) -> None:
-    """
-    Plot 3D Pareto fronts (Makespan, Total Cost, Average Utilization) for the provided archives.
-    
-    If a reference point is provided, it is plotted as a distinct marker.
-    """
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection='3d')
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         if archive:
             objs = np.array([entry[1] for entry in archive])
-            # Note: Average utilization is negated in our objective vector.
             ax.scatter(objs[:, 0], objs[:, 1], -objs[:, 2], c=color, marker=marker, s=80,
                        edgecolor='k', label=label)
     if ref_point is not None:
@@ -512,15 +477,9 @@ def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     plt.show()
 
 # =============================================================================
-# -------------------- Random Instance & Task Generation --------------------
+# ------------------- Random Instance & Task Generation ---------------------
 # =============================================================================
-
 def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[str, Any]]:
-    """
-    Generate a list of random, acyclic tasks for scalability testing.
-    
-    Each task (indexed from 1) may depend on any subset of tasks 1 to i-1.
-    """
     tasks_list = []
     resource_types = list(workers.keys())
     for i in range(1, num_tasks + 1):
@@ -529,6 +488,8 @@ def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[
         max_alloc = random.randint(min_alloc + 1, 15)
         dependencies = random.sample(range(1, i), random.randint(0, min(3, i - 1))) if i > 1 else []
         resource = random.choice(resource_types)
+        deadline = random.randint(20, 150)
+        priority = random.choice([1, 2, 3, 4])
         tasks_list.append({
             "id": i,
             "task_name": f"Task {i}",
@@ -536,7 +497,24 @@ def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[
             "min": min_alloc,
             "max": max_alloc,
             "dependencies": dependencies,
-            "resource": resource
+            "resource": resource,
+            "deadline": deadline,
+            "priority": priority,
+            # Additional constraint attributes with random or default values:
+            "vendor_delay": random.choice([0, 1]),
+            "compliance_delay": random.choice([0, 2]),
+            "quality_assurance_delay": random.choice([0, 2]),
+            "skill_gap_delay": random.choice([0, 1]),
+            "material_delay": random.choice([0, 1]),
+            "equipment_delay": random.choice([0, 1]),
+            "contingency_time": random.choice([0, 1, 2]),
+            "scope_creep_delay": random.choice([0, 1, 2]),
+            "communication_delay": random.choice([0, 1]),
+            "env_delay": random.choice([0, 1]),
+            "country_risk_factor": round(random.uniform(1, 1.1), 2),
+            "complexity_factor": round(random.uniform(1, 1.2), 2),
+            "cost_risk_factor": round(random.uniform(0, 0.05), 2),
+            "energy_cost_multiplier": round(random.uniform(0, 0.1), 2)
         })
     return tasks_list
 
@@ -546,52 +524,18 @@ def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[
 def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
                         search_agents_no: int, max_iter: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
-    """
-    Adaptive MOHHO_with_progress implements a Multi-Objective Harris Hawks Optimization
-    for the RCPSP problem, incorporating several enhancements to improve convergence and diversity.
-    
-    Enhancements and their scientific justifications:
-    
-    1. Chaotic Initialization:
-       - Uses a logistic chaotic map to initialize the population, thereby enhancing the initial diversity.
-       - Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-         and Yan et al. (2022), "An Improved Multi-Objective Harris Hawk Optimization with Blank Angle Region Enhanced Search"
-       - URL: https://doi.org/10.3390/math7020146
-       - URL: https://doi.org/10.3390/sym14050967
-
-    2. Adaptive Step Size Update (Self-adaptation):
-       - Updates the step sizes based on improvements between iterations, allowing for dynamic adjustment of exploration/exploitation.
-       - Citation: Adaptive tuning in metaheuristics (e.g., see Brest et al. (2006) for DE adaptive strategies)
-       - URL: https://doi.org/10.1109/TEVC.2006.872133
-
-    3. Diversity-driven Injection:
-       - Monitors the diversity of the population and, if stagnation is detected, replaces the worst-performing hawk with a new one.
-       - Citation: Yüzgeç & Kuşoğlu (2020) propose diversity-driven strategies in multi-objective optimization.
-
-    4. Archive Management via Crowding Distance:
-       - Incorporates a NSGA-II inspired archive update procedure that uses crowding distance to maintain a diverse set of non-dominated solutions.
-       - Citation: Deb et al. (2002), "Multi-Objective Optimization Using Evolutionary Algorithms"
-       - URL: https://doi.org/10.1109/4235.996017
-
-    Returns:
-        archive: A list of non-dominated solutions (each as a tuple of decision and objective vectors).
-        progress: A list recording the best makespan value per iteration.
-    """
-    # Enhanced initialization using chaotic map
-    X = chaotic_map_initialization(lb, ub, dim, search_agents_no)  # Chaotic Initialization enhancement
-    step_sizes = np.ones((search_agents_no, dim))  # Self-adaptive step sizes for each hawk and dimension
+    X = chaotic_map_initialization(lb, ub, dim, search_agents_no)
+    step_sizes = np.ones((search_agents_no, dim))
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
     t = 0
     diversity_threshold = 0.1 * np.mean(ub - lb)
     while t < max_iter:
-        # Non-linear decaying escape energy (using cosine schedule)
         E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
         for i in range(search_agents_no):
             X[i, :] = np.clip(X[i, :], lb, ub)
             f_val = objf(X[i, :])
             archive = update_archive_with_crowding(archive, (X[i, :].copy(), f_val.copy()))
-        # Leader selection using diversity-aware roulette selection [Yüzgeç et al. (2020)]
         rabbit = random.choice(archive)[0] if archive else X[0, :].copy()
         for i in range(search_agents_no):
             old_x = X[i, :].copy()
@@ -631,7 +575,6 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0)) + np.random.randn(dim) * levy(dim)
                         if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
                             X[i, :] = X2.copy()
-            # Self-adaptive step size update based on improvement [Adaptive tuning in metaheuristics]
             new_x = old_x + step_sizes[i, :] * (X[i, :] - old_x)
             new_x = np.clip(new_x, lb, ub)
             new_obj = np.linalg.norm(objf(new_x))
@@ -640,7 +583,6 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
             else:
                 step_sizes[i, :] *= 1.05
             X[i, :] = new_x.copy()
-        # Diversity-driven injection of new hawks if stagnation is detected [Yüzgeç et al. (2020)]
         dists = [np.linalg.norm(X[i] - X[j]) for i in range(search_agents_no) for j in range(i+1, search_agents_no)]
         avg_dist = np.mean(dists) if dists else 0
         if avg_dist < diversity_threshold:
@@ -661,32 +603,7 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
 
 class PSO:
     """
-    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) implements a PSO for RCPSP with several enhancements.
-    
-    Enhancements and their scientific justifications:
-    
-    1. Self-adaptive Inertia Weight Update:
-       - Dynamically adjusts the inertia weight based on improvement to balance exploration and exploitation.
-       - Citation: Zhang et al. (2018), Adaptive MOPSO literature.
-       - https://doi.org/10.1007/s11761-018-0231-7
-
-    2. Periodic Mutation/Disturbance:
-       - Introduces a disturbance operation (i.e., periodic mutation) to prevent premature convergence.
-       - Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-       - https://doi.org/10.3390/math7020146
-    
-    3. Archive Update via Crowding Distance:
-       - Uses NSGA-II style crowding distance to update an external archive and maintain solution diversity.
-       - Citation: Deb et al. (2002), "Multi-Objective Optimization Using Evolutionary Algorithms"
-       - URL: https://doi.org/10.1109/4235.996017
-    
-    4. Hypercube-Based Leader Selection:
-       - Divides the objective space into hypercubes to select leaders for guiding the swarm, promoting diverse search directions.
-       - Citation: Coello Coello et al. (2004)
-       - https://doi.org/10.1080/03052150410001647966
-    
-    Returns:
-        The PSO class provides methods to run the optimization and track convergence.
+    Adaptive MOPSO for RCPSP with enhancements.
     """
     def __init__(self, dim: int, lb: np.ndarray, ub: np.ndarray,
                  obj_funcs: List[Callable[[np.ndarray], float]], pop: int = 30,
@@ -713,7 +630,7 @@ class PSO:
                 'velocity': vel,
                 'pbest': pos.copy(),
                 'obj': self.evaluate(pos),
-                'w': self.w_max  # Initialize with maximum inertia weight.
+                'w': self.w_max
             }
             self.swarm.append(particle)
         self.archive: List[Tuple[np.ndarray, np.ndarray]] = []
@@ -722,22 +639,12 @@ class PSO:
         self.jump_interval = jump_interval
 
     def evaluate(self, pos: np.ndarray) -> np.ndarray:
-        """Evaluate a particle's position using the provided objective functions."""
         if len(self.obj_funcs) == 1:
             return np.array([self.obj_funcs[0](pos)])
         else:
             return np.array([f(pos) for f in self.obj_funcs])
 
     def select_leader_hypercube(self) -> List[np.ndarray]:
-        """
-        Select leader particles using hypercube division of the archive.
-        
-        The objective space is divided into a fixed number of bins and leaders are chosen
-        with a probability inversely proportional to the density of solutions in each hypercube.
-        
-        Enhancement: Hypercube-based leader selection promotes diverse guiding solutions.
-        Citation: Coello Coello et al. (2004)
-        """
         if not self.archive:
             return [random.choice(self.swarm)['position'] for _ in range(self.pop)]
         objs = np.array([entry[1] for entry in self.archive])
@@ -762,7 +669,6 @@ class PSO:
         return leaders
 
     def jump_improved_operation(self) -> None:
-        """Perform a jump operation to escape local optima."""
         if len(self.archive) < 2:
             return
         c1, c2 = random.sample(self.archive, 2)
@@ -775,7 +681,6 @@ class PSO:
             self.archive = update_archive_with_crowding(self.archive, (oc, obj_val))
 
     def disturbance_operation(self, particle: Dict[str, Any]) -> None:
-        """Apply a random disturbance to a particle's position to enhance exploration."""
         rate = self.disturbance_rate_min + (self.disturbance_rate_max - self.disturbance_rate_min) * (self.iteration / self.max_iter)
         if random.random() < rate:
             k = random.randint(1, self.dim)
@@ -792,18 +697,6 @@ class PSO:
             particle['obj'] = self.evaluate(new_pos)
 
     def move(self) -> None:
-        """
-        Update the swarm by moving each particle, applying self-adaptive inertia weight updates,
-        and periodic disturbance operations. The external archive is updated using crowding distance.
-        
-        Enhancements:
-          - Self-adaptive inertia weight update: Adjusts inertia weight based on improvements.
-            Citation: Adaptive MOPSO literature (e.g., Zhang et al., 2018).
-          - Periodic mutation/disturbance: Prevents premature convergence.
-            Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity".
-          - Archive update via crowding distance for diversity preservation.
-            Citation: Deb et al. (2002), "Multi-Objective Optimization Using Evolutionary Algorithms".
-        """
         self.iteration += 1
         leaders = self.select_leader_hypercube()
         for idx, particle in enumerate(self.swarm):
@@ -811,7 +704,6 @@ class PSO:
             old_obj = np.linalg.norm(self.evaluate(old_pos))
             r2 = random.random()
             guide = leaders[idx]
-            # Standard PSO velocity and position update.
             new_v = particle['w'] * particle['velocity'] + self.c2 * r2 * (guide - particle['position'])
             new_v = np.array([np.clip(new_v[i], -self.vmax[i], self.vmax[i]) for i in range(self.dim)])
             particle['velocity'] = new_v
@@ -820,7 +712,6 @@ class PSO:
             particle['position'] = new_pos
             particle['obj'] = self.evaluate(new_pos)
             particle['pbest'] = new_pos.copy()
-            # Update inertia weight based on performance.
             new_obj = np.linalg.norm(self.evaluate(new_pos))
             if new_obj < old_obj:
                 particle['w'] = max(particle['w'] * 0.95, self.w_min)
@@ -841,19 +732,12 @@ class PSO:
         self.update_archive()
 
     def update_archive(self) -> None:
-        """Update the external archive using the current swarm particles."""
         for particle in self.swarm:
             pos = particle['position'].copy()
             obj_val = particle['obj'].copy()
             self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
 
     def run(self, max_iter: Optional[int] = None) -> List[float]:
-        """
-        Run the Adaptive MOPSO for a specified number of iterations.
-        
-        Returns:
-            convergence: A list of the best makespan values recorded per iteration.
-        """
         if max_iter is None:
             max_iter = self.max_iter
         convergence: List[float] = []
@@ -863,7 +747,6 @@ class PSO:
             convergence.append(best_ms)
         return convergence
 
-
 def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     tasks: List[Dict[str, Any]], workers: Dict[str, int],
                     lb: np.ndarray, ub: np.ndarray, ant_count: int, max_iter: int,
@@ -871,44 +754,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     Q: float = 100.0, P: float = 0.6, w1: float = 1.0, w2: float = 1.0,
                     sigma_share: float = 1.0, lambda3: float = 2.0, lambda4: float = 5.0,
                     colony_count: int = 10) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
-    """
-    MOACO_improved implements a multi-objective ACO for RCPSP with several enhancements.
-    Base algorithm concept from Distributed Optimization by Ant Colonies
-    https://www.researchgate.net/publication/216300484_Distributed_Optimization_by_Ant_Colonies
-
-    Enhancements and their scientific justifications:
-    1. Chaotic Initialization:
-       - Uses a logistic chaotic map to improve the diversity of the initial population.
-       - Citation: Sun et al. (2019) "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-       - https://doi.org/10.3390/math7020146
-
-    2. Adaptive Evaporation:
-       - Increases the evaporation rate when the variance of pheromone values is low, preventing premature convergence.
-       - Citation: Zhao et al. (2018) (adaptive evaporation approaches in ACO)
-       - https://doi.org/10.3390/sym10040104
-
-    3. Ranking-Based Pheromone Deposit Using Crowding Distance:
-       - Computes the crowding distance of archive solutions (inspired by NSGA-II [Deb, 2002]) and deposits pheromone proportional to the normalized crowding distance.
-       - A decay factor is applied so that deposits diminish over time, shifting the search from exploration to exploitation.
-       - Citations: Deb, K. (2002) "Multi-Objective Optimization Using Evolutionary Algorithms" and indicator-based methods (e.g., Zitzler & Künzli, 2004).
-       - https://doi.org/10.1109/4235.996017
-       - https://doi.org/10.1007/978-3-540-30217-9_84
-
-    4. Multi-Colony Pheromone Updates and Periodic Reinitialization:
-       - Maintains separate pheromone matrices per colony and merges them periodically.
-       - Helps explore multiple regions of the search space.
-       - Citation: Angus & Woodward (2009) for multi-colony ACO approaches.
-       - https://doi-org.miman.bib.bth.se/10.1007/s11721-008-0022-4
-
-    5. Local Search and Diversity Injection:
-       - Employs extended local search (±1 and ±2 perturbations) and diversity-driven injection of new ants when stagnation is detected.
-       - Citation: López-Ibáñez et al. (2012) for extended local search, and Yüzgeç & Kuşoğlu (2020) for diversity-driven injection.
-       - https://doi-org.miman.bib.bth.se/10.1007/s11721-012-0070-7
-       - https://bseujert.bilecik.edu.tr/index.php/bseujert/article/view/14/11
-
-    """
     dim = len(lb)
-    # Initialize pheromone matrices and heuristic information for each colony.
     colony_pheromones = []
     colony_heuristics = []
     for _ in range(colony_count):
@@ -916,14 +762,12 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
         heuristic = []
         for i in range(dim):
             possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
-            # Each value gets an initial pheromone of 1.0.
             pheromone.append({v: 1.0 for v in possible_values})
             h_dict = {}
             task = tasks[i]
             for v in possible_values:
                 new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (v - 1))
                 duration = new_effort / v
-                # Use nan_to_num to ensure robustness.
                 h_dict[v] = np.nan_to_num(1.0 / duration, nan=0.0, posinf=0.0, neginf=0.0)
             heuristic.append(h_dict)
         colony_pheromones.append(pheromone)
@@ -933,12 +777,10 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
     ants_per_colony = ant_count // colony_count
     best_global = float('inf')
     no_improvement_count = 0
-    stagnation_threshold = 10  # If no improvement for 10 iterations, inject diversity.
-    eps = 1e-6  # Small epsilon to avoid division by zero.
-
+    stagnation_threshold = 10
+    eps = 1e-6
     for iteration in range(max_iter):
         colony_solutions = []
-        # --- Solution Construction and Extended Local Search ---
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             heuristic = colony_heuristics[colony_idx]
@@ -965,8 +807,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                             chosen = v
                             break
                     solution.append(chosen)
-                # Extended Local Search:
-                # First, try ±1 perturbations.
                 neighbors = []
                 for i in range(dim):
                     for delta in [-1, 1]:
@@ -986,7 +826,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     if compare_objs(n_obj, best_obj):
                         best_obj = n_obj
                         best_neighbor = neighbor
-                # If no improvement with ±1, try ±2 perturbations.
                 if best_neighbor == solution:
                     extended_neighbors = []
                     for i in range(dim):
@@ -1002,31 +841,22 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 solution = best_neighbor
                 obj_val = objf(np.array(solution))
                 colony_solutions.append((solution, obj_val))
-        # Update archive using NSGA-II crowding distance mechanism.
         for sol, obj_val in colony_solutions:
             archive = update_archive_with_crowding(archive, (np.array(sol), obj_val))
-        
-        # --- Adaptive Evaporation ---
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             all_values = []
             for i in range(dim):
                 all_values.extend(list(pheromone[i].values()))
-            # Clean the values before computing variance.
             all_values = np.nan_to_num(np.array(all_values), nan=0.0, posinf=0.0, neginf=0.0)
             var_pheromone = np.var(all_values)
-            # Increase evaporation rate if variance is low to prevent convergence to a suboptimal trail.
             if var_pheromone < 0.001:
-                evap_rate_current = min(0.9, evaporation_rate * 1.5)  # [Zhao et al., 2018]
+                evap_rate_current = min(0.9, evaporation_rate * 1.5)
             else:
                 evap_rate_current = evaporation_rate
             for i in range(dim):
                 for v in pheromone[i]:
                     pheromone[i][v] *= (1 - evap_rate_current)
-        
-        # --- Ranking-based Deposit Update Using Crowding Distance ---
-        # This enhancement is based on NSGA-II's crowding distance (Deb, 2002) and indicator-based methods (Zitzler & Künzli, 2004).
-        # It promotes pheromone deposition on less-crowded solutions while applying a decay factor over time.
         crowding = compute_crowding_distance(archive)
         max_cd = np.max(crowding) if len(crowding) > 0 else 1.0
         if not np.isfinite(max_cd) or max_cd <= 0:
@@ -1037,9 +867,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             for colony_idx in range(colony_count):
                 for i, v in enumerate(sol):
                     colony_pheromones[colony_idx][i][v] += deposit
-        
-        # --- Multi-Colony Pheromone Reinitialization ---
-        # Periodically reinitialize pheromone matrices if variance is too low.
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             all_values = []
@@ -1050,7 +877,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 for i in range(dim):
                     possible_values = list(range(int(lb[i]), int(ub[i]) + 1))
                     pheromone[i] = {v: 1.0 for v in possible_values}
-        # Merge pheromone matrices from all colonies to guide future solution construction.
         merged_pheromone = []
         for i in range(dim):
             merged = {}
@@ -1061,8 +887,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             merged_pheromone.append(merged)
         for colony_idx in range(colony_count):
             colony_pheromones[colony_idx] = [merged_pheromone[i].copy() for i in range(dim)]
-        
-        # --- Progress Update & Diversity Injection ---
         current_best = min(obj_val[0] for _, obj_val in colony_solutions)
         progress.append(current_best)
         if current_best < best_global:
@@ -1070,7 +894,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             no_improvement_count = 0
         else:
             no_improvement_count += 1
-        # Inject new ants if stagnation is detected.
         if no_improvement_count >= stagnation_threshold:
             for colony_idx in range(colony_count):
                 num_to_reinit = max(1, ants_per_colony // 10)
@@ -1083,30 +906,21 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
 # =============================================================================
 # ------------------------- Experiment Runner -------------------------------
 # =============================================================================
-
 def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10
                    ) -> Tuple[Dict[str, Any], Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]], List[Dict[str, Any]]]:
-    """
-    Run multiple independent experiments for Adaptive MOHHO, Adaptive MOPSO, Improved MOACO, and Baseline.
-    
-    Returns:
-        results: Dictionary containing performance metrics (best makespan, normalized hypervolume, spread).
-        archives_all: Dictionary of final archives (Pareto fronts) for each algorithm (list of runs).
-        base_schedules: List of baseline schedules from the greedy allocation.
-    """
     workers = {"Developer": 10, "Manager": 2, "Tester": 3}
     worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
 
     if use_random_instance:
         tasks = generate_random_tasks(num_tasks, workers)
     else:
-        tasks = get_default_tasks()
-    model = RCPSPModel(tasks, workers, worker_cost)
+        tasks = get_extended_tasks()
+
+    model = ExtendedRCPSPModel(tasks, workers, worker_cost)
     dim = len(model.tasks)
     lb_current = np.array([task["min"] for task in model.tasks])
     ub_current = np.array([task["max"] for task in model.tasks])
     
-    # Prepare results storage.
     results = {
         "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
         "PSO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
@@ -1122,16 +936,20 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
         results["Baseline"]["makespan"].append(base_ms)
         base_schedules.append(base_schedule)
 
+        # MOHHO with extended multi-objective function (5 objectives)
         hho_iter = ITER
         search_agents_no = POP
-        archive_hho, _ = MOHHO_with_progress(lambda x: multi_objective(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
+        archive_hho, _ = MOHHO_with_progress(lambda x: multi_objective_extended(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
         best_ms_hho = min(archive_hho, key=lambda entry: entry[1][0])[1][0] if archive_hho else None
         results["MOHHO"]["best_makespan"].append(best_ms_hho)
         archives_all["MOHHO"].append(archive_hho)
 
+        # PSO with 5 objectives
         objectives = [lambda x: objective_makespan(x, model),
                       lambda x: objective_total_cost(x, model),
-                      lambda x: objective_neg_utilization(x, model)]
+                      lambda x: objective_neg_utilization(x, model),
+                      lambda x: objective_weighted_tardiness(x, model),
+                      lambda x: objective_workload_balance(x, model)]
         optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
                         pop=POP, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
@@ -1141,20 +959,19 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
         results["PSO"]["best_makespan"].append(best_ms_pso)
         archives_all["PSO"].append(archive_pso)
 
+        # MOACO with extended multi-objective function
         ant_count = POP
         moaco_iter = ITER
-        archive_moaco, _ = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
+        archive_moaco, _ = MOACO_improved(lambda x: multi_objective_extended(x, model), model.tasks, workers,
                                           lb_current, ub_current, ant_count, moaco_iter,
                                           alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
         best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
         results["MOACO"]["best_makespan"].append(best_ms_moaco)
         archives_all["MOACO"].append(archive_moaco)
 
-    # Compute a fixed reference point from the union of all archives.
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
 
-    # For each algorithm and each run, compute normalized hypervolume using the fixed reference.
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
             norm_hv = normalized_hypervolume_fixed(archive, fixed_ref)
@@ -1162,7 +979,6 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
             sp = compute_spread(archive)
             results[alg]["spread"].append(sp)
 
-    # (Optional) Compute generational distance using the union archive as true Pareto front.
     union_archive = [entry for alg in archives_all for archive in archives_all[alg] for entry in archive]
     true_pareto = []
     for sol, obj in union_archive:
@@ -1181,14 +997,7 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
 # =============================================================================
 # ------------------------- Statistical Analysis ----------------------------
 # =============================================================================
-
 def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
-    """
-    Compute the mean, standard deviation, and perform one-way ANOVA on best makespan values.
-    
-    The ANOVA test checks if the differences in mean performance among the algorithms (and baseline)
-    are statistically significant.
-    """
     algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
     means, stds, data = {}, {}, {}
     data["Baseline"] = results["Baseline"]["makespan"]
@@ -1209,57 +1018,46 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
 # =============================================================================
 # ------------------------- Automated Unit Testing --------------------------
 # =============================================================================
-
 def run_unit_tests() -> None:
-    """
-    Run basic unit tests:
-      1. Test that update_archive_with_crowding produces a non-dominated archive.
-      2. Test that RCPSPModel.compute_schedule returns a feasible schedule.
-    """
-    # Test 1: Archive update
     sol1 = np.array([1, 2, 3])
-    obj1 = np.array([10, 20, 30])
+    obj1 = np.array([10, 20, 30, 5, 2])
     sol2 = np.array([2, 3, 4])
-    obj2 = np.array([12, 22, 32])
+    obj2 = np.array([12, 22, 32, 7, 3])
     archive = []
     archive = update_archive_with_crowding(archive, (sol1, obj1))
     archive = update_archive_with_crowding(archive, (sol2, obj2))
-    # In a minimization context, if sol1 dominates sol2, archive should contain only sol1.
     if len(archive) != 1:
         logging.error("Unit Test Failed: Archive contains dominated solutions.")
     else:
         logging.info("Unit Test Passed: Archive update produces non-dominated set.")
 
-    # Test 2: Feasibility of schedule
     workers = {"Developer": 5, "Manager": 2, "Tester": 3}
     worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    tasks = get_default_tasks()
-    model = RCPSPModel(tasks, workers, worker_cost)
+    tasks = get_extended_tasks()
+    model = ExtendedRCPSPModel(tasks, workers, worker_cost)
     x = np.array([task["min"] for task in tasks])
     schedule, ms = model.compute_schedule(x)
     if schedule and ms > 0:
-        logging.info("Unit Test Passed: RCPSP schedule is computed successfully.")
+        logging.info("Unit Test Passed: Extended RCPSP schedule is computed successfully.")
     else:
-        logging.error("Unit Test Failed: RCPSP schedule computation issue.")
+        logging.error("Unit Test Failed: Extended RCPSP schedule computation issue.")
 
 # =============================================================================
 # ------------------------- Main Comparison ---------------------------------
 # =============================================================================
-
 if __name__ == '__main__':
-    # Run unit tests first
     run_unit_tests()
     
-    runs = 1  # Number of independent runs for statistical significance
-    use_random_instance = False  # Set True for random instances (scalability testing)
+    runs = 1
+    use_random_instance = False
     num_tasks = 10
-    POP = 200
-    ITER = 500
+    POP = 50
+    ITER = 200
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
     else:
-        tasks_for_exp = get_default_tasks()
+        tasks_for_exp = get_extended_tasks()
 
     results, archives_all, base_schedules = run_experiments(POP, ITER, runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks)
     
@@ -1268,13 +1066,11 @@ if __name__ == '__main__':
     
     means, stds = statistical_analysis(results)
     
-    # Plot convergence metrics for Best Makespan, Normalized Hypervolume, Spread, and Generational Distance.
     plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
     plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
     plot_convergence(results["Generational_Distance"], "Generational Distance")
     
-    # Plot Pareto fronts with the fixed reference point for comparison.
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
@@ -1283,14 +1079,14 @@ if __name__ == '__main__':
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
-    #plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
+    plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
     
     logging.info("Starting grid search for PSO population size...")
     pop_sizes = [10, 20, 30]
     workers = {"Developer": 10, "Manager": 2, "Tester": 3}
     worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    default_tasks = get_default_tasks()
-    model_for_grid = RCPSPModel(default_tasks, workers, worker_cost)
+    default_tasks = get_extended_tasks()
+    model_for_grid = ExtendedRCPSPModel(default_tasks, workers, worker_cost)
     lb_array = np.array([task["min"] for task in default_tasks])
     ub_array = np.array([task["max"] for task in default_tasks])
     
