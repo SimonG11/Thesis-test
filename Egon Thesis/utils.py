@@ -147,5 +147,10 @@ def compute_extremes(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     
     # For objective 2 (resource utilization, which is negated), we fix extremes.
     extremes.append((-1, 0))
+
+    new_extremes = {(0,1) : ((extremes[0][0], extremes[1][1]), (extremes[0][1], extremes[1][1])),
+                   (0,2) : ((extremes[0][0], extremes[2][0]),(extremes[0][1], extremes[2][1])),
+                   (1,2) : ((extremes[1][0], extremes[2][0]),(extremes[1][1], extremes[2][0]))
+                   }
     
-    return extremes
+    return new_extremes

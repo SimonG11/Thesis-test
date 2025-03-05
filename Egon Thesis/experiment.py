@@ -6,7 +6,9 @@ from rcpsp_model import RCPSPModel
 from tasks import get_default_tasks, generate_random_tasks
 from algorithms import MOHHO_with_progress, PSO, MOACO_improved
 from metrics import (compute_fixed_reference, compute_combined_ideal, 
-                     normalized_hypervolume_fixed, absolute_hypervolume_fixed, compute_generational_distance, compute_spread, compute_spread_3obj_with_extremes)
+                     normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
+                     compute_generational_distance, compute_spread, 
+                     compute_spread_3d_by_projections, compute_coverage)
 from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs, plot_comparative_bar_chart, plot_aggregate_convergence
 from scipy.stats import f_oneway
 from objectives import objective_makespan, objective_total_cost, objective_neg_utilization, multi_objective
@@ -30,9 +32,9 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     ub_current = np.array([task["max"] for task in model.tasks])
     
     results = {
-        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": []},
-        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": []},
-        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": []},
+        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : []},
+        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : []},
+        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : []},
         "Baseline": {"makespan": []}
     }
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
@@ -77,6 +79,9 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                                                    alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
         best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
         results["MOACO"]["best_makespan"].append(best_ms_moaco)
+        results["MOACO"]["coverage"].append(compute_coverage(archive_moaco, archive_hho + archive_pso))
+        results["MOHHO"]["coverage"].append(compute_coverage(archive_hho, archive_moaco + archive_pso))
+        results["PSO"]["coverage"].append(compute_coverage(archive_pso, archive_hho + archive_moaco))
         archives_all["MOACO"].append(archive_moaco)
         convergence_curves["MOACO"].append(conv_moaco)
         logging.info(f"MOACO Done")
@@ -86,17 +91,18 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     logging.info(f"Combined ideal (global lower bound): {global_lower_bound}")
     all_archives_total = []
-    for alg in ["MOHHO", "PSO", "MOACO"]:
+    algs = ["MOHHO", "PSO", "MOACO"]
+    for alg in algs:
         for archive in archives_all[alg]:
             all_archives_total.append(archive)
     extreme_bounds = utils.compute_extremes(all_archives_total)
-
-    for alg in ["MOHHO", "PSO", "MOACO"]:
+    print(extreme_bounds)
+    for alg in algs:
         for archive in archives_all[alg]:
             norm_hv = normalized_hypervolume_fixed(archive, fixed_ref)
             abs_hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
             sp = compute_spread(archive)
-            rsp = compute_spread_3obj_with_extremes(archive, extreme_bounds)
+            rsp = compute_spread_3d_by_projections(archive, extreme_bounds)
             results[alg]["normalized_hypervolume"].append(norm_hv)
             results[alg]["absolute_hypervolume"].append(abs_hv)
             results[alg]["spread"].append(sp)
