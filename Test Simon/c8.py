@@ -555,12 +555,14 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
     1. Chaotic Initialization:
        - Uses a logistic chaotic map to initialize the population, thereby enhancing the initial diversity.
        - Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
+         and Yan et al. (2022), "An Improved Multi-Objective Harris Hawk Optimization with Blank Angle Region Enhanced Search"
        - URL: https://doi.org/10.3390/math7020146
+       - URL: https://doi.org/10.3390/sym14050967
 
     2. Adaptive Step Size Update (Self-adaptation):
        - Updates the step sizes based on improvements between iterations, allowing for dynamic adjustment of exploration/exploitation.
        - Citation: Adaptive tuning in metaheuristics (e.g., see Brest et al. (2006) for DE adaptive strategies)
-       - https://doi.org/10.1109/TEVC.2006.872133
+       - URL: https://doi.org/10.1109/TEVC.2006.872133
 
     3. Diversity-driven Injection:
        - Monitors the diversity of the population and, if stagnation is detected, replaces the worst-performing hawk with a new one.
@@ -668,7 +670,6 @@ class PSO:
        - Citation: Zhang et al. (2018), Adaptive MOPSO literature.
        - https://doi.org/10.1007/s11761-018-0231-7
 
-    
     2. Periodic Mutation/Disturbance:
        - Introduces a disturbance operation (i.e., periodic mutation) to prevent premature convergence.
        - Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
@@ -869,7 +870,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     alpha: float = 1.0, beta: float = 2.0, evaporation_rate: float = 0.1,
                     Q: float = 100.0, P: float = 0.6, w1: float = 1.0, w2: float = 1.0,
                     sigma_share: float = 1.0, lambda3: float = 2.0, lambda4: float = 5.0,
-                    colony_count: int = 4) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
+                    colony_count: int = 10) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
     MOACO_improved implements a multi-objective ACO for RCPSP with several enhancements.
     Base algorithm concept from Distributed Optimization by Ant Colonies
@@ -1252,8 +1253,8 @@ if __name__ == '__main__':
     runs = 1  # Number of independent runs for statistical significance
     use_random_instance = False  # Set True for random instances (scalability testing)
     num_tasks = 10
-    POP = 10
-    ITER = 100
+    POP = 200
+    ITER = 500
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
