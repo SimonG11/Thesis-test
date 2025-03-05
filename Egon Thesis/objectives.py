@@ -2,6 +2,7 @@
 import numpy as np
 from typing import List
 from rcpsp_model import RCPSPModel
+import utils
 
 
 def objective_makespan(x: np.ndarray, model: RCPSPModel) -> float:
@@ -22,8 +23,9 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         alloc = max(task["min"], min(effective_max, alloc))
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         duration = new_effort / alloc
+        total_effort = utils.convertDurationtodaysCost(duration, alloc)
         wage_rate = model.worker_cost[resource_type]
-        total_cost += duration * alloc * wage_rate
+        total_cost += total_effort * wage_rate
     return total_cost
 
 

@@ -1,7 +1,7 @@
 # rcpsp_model.py
 from typing import List, Tuple, Dict, Any
 import numpy as np
-from utils import find_earliest_start
+from utils import find_earliest_start, convertDurationtodays
 
 
 class RCPSPModel:
@@ -28,6 +28,7 @@ class RCPSPModel:
             alloc = max(task["min"], min(effective_max, alloc))
             new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
             duration = new_effort / alloc
+            duration = convertDurationtodays(duration)
             earliest = max([finish_times[dep] for dep in task["dependencies"]]) if task["dependencies"] else 0
             candidate_start = find_earliest_start(earliest, duration, alloc, schedule, capacity, resource_type)
             start_time = candidate_start
