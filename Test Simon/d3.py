@@ -120,6 +120,46 @@ def find_earliest_start(earliest: float, duration: float, allocated: float,
     last_finish = max(task["finish"] for task in tasks_r)
     return last_finish + epsilon
 
+def convertDurationtodays (duration):
+    days = 0 
+    while duration >= 0:
+        if duration > 4:
+            duration -= 8
+            days +=1
+        else:
+            duration -= 4
+            days +=0.5
+    return days
+
+def convertDurationtodaysCost (duration, alloc):
+    ActualAcualEffort = 0
+    if int(alloc) == alloc:    
+        while duration >= 0:
+            if duration > 4:
+                duration -= 8
+                ActualAcualEffort += 8
+            else:
+                duration -= 4
+                #days +=0.5
+                ActualAcualEffort +=4
+        return ActualAcualEffort * alloc 
+    else:
+        alloc -= 0.5
+        halfduration = duration / 2 
+        while duration >= 0:
+            if duration > 4:
+                duration -= 8
+                ActualAcualEffort += 8
+            else:
+                duration -= 4
+                #days +=0.5
+                ActualAcualEffort +=4
+        ActualAcualEffort *= alloc
+        ActualAcualEffort += ((halfduration // 4)*4)
+        if (halfduration % 4) != 0:
+            ActualAcualEffort += 4
+        return ActualAcualEffort
+
 # ---------------------------------------------------------------------------
 # Chaotic Initialization using Logistic Map
 # ---------------------------------------------------------------------------
@@ -204,6 +244,7 @@ class RCPSPModel:
             alloc = max(task["min"], min(effective_max, alloc))
             new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
             duration = new_effort / alloc
+            duration = convertDurationtodays(duration)
             earliest = max([finish_times[dep] for dep in task["dependencies"]]) if task["dependencies"] else 0
             candidate_start = find_earliest_start(earliest, duration, alloc, schedule, capacity, resource_type)
             start_time = candidate_start
@@ -252,8 +293,9 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         alloc = max(task["min"], min(effective_max, alloc))
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         duration = new_effort / alloc
+        totaleffort = convertDurationtodaysCost(duration, alloc)
         wage_rate = model.worker_cost[resource_type]
-        total_cost += duration * alloc * wage_rate
+        total_cost += totaleffort * wage_rate
     return total_cost
 
 def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
