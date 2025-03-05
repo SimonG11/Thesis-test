@@ -10,6 +10,22 @@ def initialize_seed(seed: int = 42) -> None:
     random.seed(seed)
 
 
+def round_half(x: float) -> float:
+    """
+    Round a number to the nearest half step (e.g., 1, 1.5, 2, 2.5, ...).
+    This function ensures that worker allocations remain in the allowed discrete set.
+    """
+    return round(x * 2) / 2.0
+
+def clip_round_half(x: float, lb: float, ub: float) -> float:
+    """Clip a value between lb and ub and round it to the nearest half step."""
+    return round_half(np.clip(x, lb, ub))
+
+def discretize_vector(vec: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> np.ndarray:
+    """Discretize each element of a vector to half steps within given bounds."""
+    return np.array([clip_round_half(val, lb[i], ub[i]) for i, val in enumerate(vec)])
+
+
 def dominates(obj_a: np.ndarray, obj_b: np.ndarray, epsilon: float = 1e-6) -> bool:
     """
     Check if solution A dominates solution B in a minimization context.
