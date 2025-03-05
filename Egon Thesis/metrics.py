@@ -112,74 +112,94 @@ def compute_spread(archive: List[Tuple[np.ndarray, np.ndarray]]) -> float:
     return np.mean(dists)
 
 
-def compute_spread_3obj_with_extremes(
-    archive: List[Tuple[np.ndarray, np.ndarray]], 
-    extremes: List[Tuple[float, float]],
-    epsilon: float = 1e-6
-) -> float:
+def compute_spread_2d(points_2d: np.ndarray, 
+                      extremes: Tuple[Tuple[float, float], Tuple[float, float]], 
+                      epsilon: float = 1e-6) -> float:
     """
-    Compute the Δ spread metric for an archive with three objectives, incorporating extreme values.
+    Compute the Δ spread metric for a set of 2D points.
     
-    For each objective m (m = 0, 1, 2):
-      - Let extremes[m] = (ideal_m, upper_m), where ideal_m is the ideal (best) bound and upper_m is the upper bound.
-      - Extract the sorted objective values: f1, f2, ..., f_n.
-      - Compute:
-          d_f = f1 - ideal_m      (gap from ideal to best solution)
-          d_l = upper_m - f_n      (gap from worst solution to upper bound)
-          d_i = f(i+1) - f(i) for i = 1, …, n-1
-          d_avg = average of all d_i
-      - Then compute:
-          Δ_m = (d_f + d_l + Σ |d_i - d_avg|) / (d_f + d_l + (n-1) * d_avg)
+    For a set of points in a 2D objective space, and given extremes as:
+      - ideal: (ideal_x, ideal_y)
+      - upper: (upper_x, upper_y)
+    we do the following:
+      1. Sort the points by the first coordinate.
+      2. Compute Euclidean distances between consecutive sorted points.
+      3. Compute d_f = distance from ideal to the first point, and 
+         d_l = distance from the last point to the upper bound.
+      4. Compute the average of the consecutive distances d_avg.
+      5. Compute the sum of absolute deviations: deviation_sum = Σ |d_i – d_avg|.
+      6. Return the spread as:
+           Δ = (d_f + d_l + deviation_sum) / (d_f + d_l + (N - 1) * d_avg)
+         If (N - 1) * d_avg is 0, return 0.
+         
+    A lower Δ indicates a more uniform distribution.
+    """
+    N = points_2d.shape[0]
+    if N < 2:
+        return 0.0
+    # Sort points by the first coordinate (you could also use lexicographic order).
+    sorted_indices = np.argsort(points_2d[:, 0])
+    sorted_points = points_2d[sorted_indices]
     
-    The overall spread is the average of Δ_m for m = 0, 1, 2.
+    # Compute Euclidean distances between consecutive sorted points.
+    dists = [np.linalg.norm(sorted_points[i+1] - sorted_points[i]) for i in range(N - 1)]
+    d_avg = np.mean(dists) if dists else 0.0
+    
+    # Compute boundary distances:
+    ideal, upper = extremes  # ideal and upper are 2D tuples
+    d_f = np.linalg.norm(sorted_points[0] - np.array(ideal))
+    d_l = np.linalg.norm(np.array(upper) - sorted_points[-1])
+    print(extremes, sorted_points[0])
+    print(d_f, d_l)
+    deviation_sum = sum(abs(d - d_avg) for d in dists)
+    print(deviation_sum)
+    denominator = d_f + d_l + (N - 1) * d_avg
+    print(denominator)
+    if denominator < epsilon:
+        return 0.0
+    return (d_f + d_l + deviation_sum) / denominator
+
+
+def compute_spread_3d_by_projections(archive: List[Tuple[np.ndarray, np.ndarray]], 
+                                     extremes_proj: dict, 
+                                     epsilon: float = 1e-6) -> float:
+    """
+    Compute a 3D spread metric by projecting the archive's objective vectors into three 2D spaces,
+    computing a 2D spread metric for each, and averaging the results.
     
     Parameters:
-        archive: A list of tuples (decision_vector, objective_vector). Each objective_vector is a 3-element NumPy array.
-        extremes: A list of 3 tuples. For each objective m, extremes[m] = (ideal_m, upper_m).
-        epsilon: Tolerance for numerical comparisons.
+      archive: List of (decision_vector, objective_vector) tuples. Each objective_vector is a 3-element array.
+      extremes_proj: A dictionary where keys are 2-tuples representing the projection indices, e.g.
+                    (0,1), (0,2), (1,2), and each value is a tuple of extreme pairs:
+                    ((ideal_i, ideal_j), (upper_i, upper_j)).
+                    
+      For example:
+          {
+             (0,1): ((ideal0, ideal1), (upper0, upper1)),
+             (0,2): ((ideal0, ideal2), (upper0, upper2)),
+             (1,2): ((ideal1, ideal2), (upper1, upper2))
+          }
     
     Returns:
-        A float representing the average spread over the three objectives.
+      The average spread across the three 2D projections.
     """
-    # If there is only one solution, no spread exists.
     if len(archive) < 2:
         return 0.0
+    objs = np.array([entry[1] for entry in archive])  # shape (N, 3)
+    projections = [(0,1), (0,2), (1,2)]
+    spread_values = []
     
-    # Extract objective vectors (n x 3 array).
-    objs = np.array([entry[1] for entry in archive])
-    n = objs.shape[0]
-    delta_sum = 0.0
-
-    for m in range(3):
-        # Get ideal and upper for objective m.
-        ideal_m, upper_m = extremes[m]
-        
-        # Extract the m-th objective values and sort them.
-        sorted_vals = np.sort(objs[:, m])
-        
-        # Compute gap from ideal to the best solution.
-        d_f = sorted_vals[0] - ideal_m
-        
-        # Compute gap from the worst solution to the upper bound.
-        d_l = upper_m - sorted_vals[-1]
-        
-        # Compute distances between consecutive sorted values.
-        dists = [abs(sorted_vals[i+1] - sorted_vals[i]) for i in range(n - 1)]
-        d_avg = np.mean(dists) if dists else 0.0
-        
-        # Compute the sum of absolute deviations from the average gap.
-        deviation_sum = sum(abs(d - d_avg) for d in dists)
-        
-        # Avoid division by zero.
-        if d_avg == 0:
-            delta_m = 0.0
-        else:
-            delta_m = (d_f + d_l + deviation_sum) / (d_f + d_l + (n - 1) * d_avg)
-        
-        delta_sum += delta_m
-
-    # Return the average spread over all three objectives.
-    return delta_sum / len(extremes)
+    for proj in projections:
+        i, j = proj
+        # Extract the 2D projection.
+        points_2d = objs[:, [i, j]]
+        if proj not in extremes_proj:
+            raise ValueError(f"Extremes not provided for projection {proj}")
+        ext = extremes_proj[proj]
+        spread_2d = compute_spread_2d(points_2d, ext, epsilon)
+        spread_values.append(spread_2d)
+    
+    return np.mean(spread_values)
 
 
 def compute_coverage(setA: List[Tuple[np.ndarray, np.ndarray]], 
@@ -203,7 +223,7 @@ def compute_coverage(setA: List[Tuple[np.ndarray, np.ndarray]],
         for decision_a, obj_a in setA:
             if dominates(obj_a, obj_b, epsilon):
                 dominated_count += 1
-                break  # No need to check other solutions in setA
+                # No need to check other solutions in setA
     return dominated_count / len(setB)
 
 
