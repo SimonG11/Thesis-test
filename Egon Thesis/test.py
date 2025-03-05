@@ -1,7 +1,1 @@
-
-
-for i in range(10):
-    for j in range(10):
-        print(i,j)
-        break
-        
+print(1==1.0)        

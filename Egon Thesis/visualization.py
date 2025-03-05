@@ -262,19 +262,12 @@ def plot_all_pareto_graphs(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     # Adjust the plane so that none of the true points fall below it.
     # For each point, compute error = z_point - (a*x + b*y + c)
     a, b, c, d, e, f = plane_coeffs
-    # Compute the fitted z for each true point.
-    X = true_points[:, 0]
-    Y = true_points[:, 1]
-    Z = true_points[:, 2]
-    fitted_z = a * X**2 + b * Y**2 + c * X * Y + d * X + e * Y + f
-    errors = fitted_z - Z
-    min_error = np.min(errors)
-    # If any true point is above the surface (i.e. error is negative), shift f upward.
-    if min_error > 0:
-        print(min_error)
-        delta = -min_error  # delta is positive
-        f_adjusted = f + delta
-        plane_coeffs = (a, b, c, d, e, f_adjusted)
+    
+    # Use the specified percentile (e.g., 95th) of the positive errors.
+    delta = 0.01
+    # Subtract this delta from f to lower the entire surface.
+    f_adjusted = f - delta
+    plane_coeffs = (a, b, c, d, e, f_adjusted)
     
     # Plot the combined graph.
     print("Plotting combined Pareto front...")

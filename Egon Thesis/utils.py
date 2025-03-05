@@ -154,3 +154,4 @@ def compute_extremes(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                    }
     
     return new_extremes
+
