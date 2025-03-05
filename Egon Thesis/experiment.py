@@ -32,9 +32,9 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     ub_current = np.array([task["max"] for task in model.tasks])
     
     results = {
-        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : []},
-        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : []},
-        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : []},
+        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_pso": [], "coverage_aco": []},
+        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_hho": [], "coverage_aco": []},
+        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_pso": [], "coverage_hho": []},
         "Baseline": {"makespan": []}
     }
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
@@ -82,6 +82,12 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         results["MOACO"]["coverage"].append(compute_coverage(archive_moaco, archive_hho + archive_pso))
         results["MOHHO"]["coverage"].append(compute_coverage(archive_hho, archive_moaco + archive_pso))
         results["PSO"]["coverage"].append(compute_coverage(archive_pso, archive_hho + archive_moaco))
+        results["MOACO"]["coverage_hho"].append(compute_coverage(archive_moaco, archive_hho))
+        results["MOHHO"]["coverage_aco"].append(compute_coverage(archive_hho, archive_moaco))
+        results["PSO"]["coverage_hho"].append(compute_coverage(archive_pso, archive_hho))
+        results["MOACO"]["coverage_pso"].append(compute_coverage(archive_moaco, archive_pso))
+        results["MOHHO"]["coverage_pso"].append(compute_coverage(archive_hho, archive_pso))
+        results["PSO"]["coverage_aco"].append(compute_coverage(archive_pso, archive_moaco))
         archives_all["MOACO"].append(archive_moaco)
         convergence_curves["MOACO"].append(conv_moaco)
         logging.info(f"MOACO Done")
@@ -96,7 +102,6 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         for archive in archives_all[alg]:
             all_archives_total.append(archive)
     extreme_bounds = utils.compute_extremes(all_archives_total)
-    print(extreme_bounds)
     for alg in algs:
         for archive in archives_all[alg]:
             norm_hv = normalized_hypervolume_fixed(archive, fixed_ref)
@@ -109,11 +114,11 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             results[alg]["multi_objective_spread"].append(rsp)
 
     union_archive = [entry for alg in archives_all for archive in archives_all[alg] for entry in archive]
-    true_pareto = []
-    for sol, obj in union_archive:
-        if not any(utils.dominates(other_obj, obj) for _, other_obj in union_archive if not np.array_equal(other_obj, obj)):
-            true_pareto.append(obj)
-    true_pareto = np.array(true_pareto)
+    # Extract all objective vectors from the union.
+    all_objs = np.array([obj for (_, obj) in union_archive])
+    
+    # Compute the true Pareto front (non-dominated set) using the helper function.
+    true_pareto = utils.get_true_pareto_points(all_objs)
     gd_results = {"MOHHO": [], "PSO": [], "MOACO": []}
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:

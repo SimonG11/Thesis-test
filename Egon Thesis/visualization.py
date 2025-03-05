@@ -5,6 +5,66 @@ from typing import List, Tuple, Optional,Dict
 from utils import get_true_pareto_points
 
 
+def fit_quadratic_surface_to_points(points: np.ndarray) -> Tuple[float, float, float, float, float, float]:
+    """
+    Fit a quadratic surface of the form:
+    
+        z = a*x^2 + b*y^2 + c*x*y + d*x + e*y + f
+    
+    to a set of 3D points using least-squares.
+    
+    Parameters:
+        points: A NumPy array of shape (n_points, 3) representing points in 3D.
+    
+    Returns:
+        A tuple of coefficients (a, b, c, d, e, f).
+    """
+    # Extract x, y, z coordinates from the points.
+    X = points[:, 0]
+    Y = points[:, 1]
+    Z = points[:, 2]
+    
+    # Build the design matrix: each row is [x^2, y^2, x*y, x, y, 1].
+    A = np.column_stack([X**2, Y**2, X*Y, X, Y, np.ones_like(X)])
+    
+    # Solve the least-squares problem.
+    coeffs, residuals, rank, s = np.linalg.lstsq(A, -Z, rcond=None)
+    return tuple(coeffs)
+
+def plot_quadratic_surface(quad_coeffs: Tuple[float, float, float, float, float, float],
+                           x_limits: Tuple[float, float],
+                           y_limits: Tuple[float, float],
+                           ax: Optional[plt.Axes] = None) -> plt.Axes:
+    """
+    Plot the quadratic surface defined by
+         z = a*x^2 + b*y^2 + c*x*y + d*x + e*y + f
+    over a grid defined by x_limits and y_limits.
+    
+    Parameters:
+        quad_coeffs: A tuple (a, b, c, d, e, f) defining the surface.
+        x_limits: Tuple (x_min, x_max) for the grid.
+        y_limits: Tuple (y_min, y_max) for the grid.
+        ax: An optional matplotlib 3D axis; if None, a new figure and axis will be created.
+    
+    Returns:
+        The matplotlib axis with the plotted surface.
+    """
+    if ax is None:
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111, projection='3d')
+    
+    a, b, c, d, e, f = quad_coeffs
+    x_min, x_max = x_limits
+    y_min, y_max = y_limits
+    # Create a grid over the given limits.
+    x_grid, y_grid = np.meshgrid(np.linspace(x_min, x_max, 30),
+                                 np.linspace(y_min, y_max, 30))
+    # Compute z values from the quadratic surface.
+    z_grid = a * x_grid**2 + b * y_grid**2 + c * x_grid * y_grid + d * x_grid + e * y_grid + f
+    ax.plot_surface(x_grid, y_grid, z_grid, color='red', alpha=0.3)
+    return ax
+
+
 def fit_plane_to_points(points: np.ndarray) -> Tuple[float, float, float]:
     """
     Fit a plane z = a*x + b*y + c to a set of points.
@@ -107,13 +167,7 @@ def plot_pareto_3d_individual(archive: List[Tuple[np.ndarray, np.ndarray]],
                c=color, marker=marker, s=80, edgecolor='k', label=label)
     
     # Generate grid from provided x_limits and y_limits.
-    x_min, x_max = x_limits
-    y_min, y_max = y_limits
-    x_grid, y_grid = np.meshgrid(np.linspace(x_min, x_max, 20),
-                                 np.linspace(y_min, y_max, 20))
-    a, b, c = plane_coeffs
-    z_grid = a * x_grid + b * y_grid + c
-    ax.plot_surface(x_grid, y_grid, -z_grid, color='red', alpha=0.3)
+    plot_quadratic_surface(plane_coeffs, x_limits, y_limits, ax)
     
     # Plot fixed reference point.
     if fixed_ref is not None:
@@ -126,6 +180,7 @@ def plot_pareto_3d_individual(archive: List[Tuple[np.ndarray, np.ndarray]],
     ax.set_title(f"3D Pareto Front for {label} with Fitted Plane")
     ax.legend()
     plt.show()
+
 
 def plot_pareto_3d_combined(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                             labels: List[str], markers: List[str], colors: List[str],
@@ -147,13 +202,14 @@ def plot_pareto_3d_combined(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                        c=color, marker=marker, s=80, edgecolor='k', label=label)
     
     # Generate grid from provided x_limits and y_limits.
-    x_min, x_max = x_limits
-    y_min, y_max = y_limits
-    x_grid, y_grid = np.meshgrid(np.linspace(x_min, x_max, 20),
-                                 np.linspace(y_min, y_max, 20))
-    a, b, c = plane_coeffs
-    z_grid = a * x_grid + b * y_grid + c
-    ax.plot_surface(x_grid, y_grid, -z_grid, color='red', alpha=0.3)
+    plot_quadratic_surface(plane_coeffs, x_limits, y_limits, ax)
+    #x_min, x_max = x_limits
+    #y_min, y_max = y_limits
+    #x_grid, y_grid = np.meshgrid(np.linspace(x_min, x_max, 20),
+    #                             np.linspace(y_min, y_max, 20))
+    #a, b, c = plane_coeffs
+    #z_grid = a * x_grid + b * y_grid + c
+    #ax.plot_surface(x_grid, y_grid, -z_grid, color='red', alpha=0.3)
     
     # Plot fixed reference point.
     if fixed_ref is not None:
@@ -166,6 +222,7 @@ def plot_pareto_3d_combined(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     ax.set_title("Combined 3D Pareto Front with Fitted Plane")
     ax.legend()
     plt.show()
+
 
 def plot_all_pareto_graphs(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                            labels: List[str],
@@ -196,34 +253,38 @@ def plot_all_pareto_graphs(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     # Fit a plane to the global non-dominated points.
     plane_coeffs = None
     if true_points.shape[0] >= 3:
-        plane_coeffs = fit_plane_to_points(true_points)
+        plane_coeffs = fit_quadratic_surface_to_points(true_points)
     else:
         print("Not enough points to fit a plane.")
         plane_coeffs = (0, 0, 0)
-    
+    x_limits = (np.min(true_points[:, 0]), np.max(true_points[:, 0]))  # e.g., (260, 310)
+    y_limits = (np.min(true_points[:, 1]), np.max(true_points[:, 1]))
     # Adjust the plane so that none of the true points fall below it.
     # For each point, compute error = z_point - (a*x + b*y + c)
-    a, b, c = plane_coeffs
-    errors = true_points[:, 2] - (a * true_points[:, 0] + b * true_points[:, 1] + c)
+    a, b, c, d, e, f = plane_coeffs
+    # Compute the fitted z for each true point.
+    X = true_points[:, 0]
+    Y = true_points[:, 1]
+    Z = true_points[:, 2]
+    fitted_z = a * X**2 + b * Y**2 + c * X * Y + d * X + e * Y + f
+    errors = fitted_z - Z
     min_error = np.min(errors)
-    if min_error < 0:
-        # Lower the plane by adjusting c so that the worst error becomes 0.
-        c_adjusted = c - min_error
-        plane_coeffs = (a, b, c_adjusted)
-    
-    # Determine grid limits based on global non-dominated points.
-    x_min, x_max = np.min(true_points[:, 0]), np.max(true_points[:, 0])
-    y_min, y_max = np.min(true_points[:, 1]), np.max(true_points[:, 1])
-    grid_limits = ((x_min, x_max), (y_min, y_max))
+    # If any true point is above the surface (i.e. error is negative), shift f upward.
+    if min_error > 0:
+        print(min_error)
+        delta = -min_error  # delta is positive
+        f_adjusted = f + delta
+        plane_coeffs = (a, b, c, d, e, f_adjusted)
     
     # Plot the combined graph.
     print("Plotting combined Pareto front...")
-    plot_pareto_3d_combined(archives, labels, markers, colors, plane_coeffs, grid_limits[0], grid_limits[1], fixed_ref)
+    plot_pareto_3d_combined(archives, labels, markers, colors, plane_coeffs, x_limits, y_limits, fixed_ref)
     
     # Plot each algorithm individually.
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         print(f"Plotting individual Pareto front for {label}...")
-        plot_pareto_3d_individual(archive, label, marker, color, plane_coeffs, grid_limits[0], grid_limits[1], fixed_ref)
+        plot_pareto_3d_individual(archive, label, marker, color, plane_coeffs, x_limits, y_limits, fixed_ref)
+
 
 def plot_comparative_bar_chart(results: dict, metric: str, algos: List[str]) -> None:
     means = {algo: np.mean(results[algo][metric]) for algo in algos}
@@ -256,4 +317,5 @@ def plot_aggregate_convergence(convergence_data: Dict[str, List[List[float]]], t
     ax.set_title(title)
     ax.legend()
     plt.show()
+
 

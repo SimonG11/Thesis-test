@@ -89,14 +89,29 @@ def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
     return archive
 
 
-def compute_generational_distance(archive: List[Tuple[np.ndarray, np.ndarray]],
+def compute_generational_distance(archive: List[Tuple[np.ndarray, np.ndarray]], 
                                   true_pareto: np.ndarray) -> float:
     """
-    Compute the Generational Distance (GD) between the archive and the true Pareto front.
+    Compute the Generational Distance (GD) between an archive and a reference Pareto front.
+    
+    GD is defined as the average Euclidean distance from each objective vector in the archive 
+    to the nearest point in the true Pareto front.
+    
+    Parameters:
+        archive: List of (decision_vector, objective_vector) tuples.
+        true_pareto: A NumPy array (n_points, n_objectives) representing the true Pareto front.
+        
+    Returns:
+        The mean of the minimum Euclidean distances from each solution in the archive 
+        to the true Pareto front. If the archive is empty or true_pareto is empty, returns infinity.
     """
     if not archive or true_pareto.size == 0:
         return float('inf')
-    objs = np.array([entry[1] for entry in archive])
+    
+    # Extract objective vectors from the archive.
+    objs = np.array([obj for (_, obj) in archive])
+    # For each solution in the archive, compute the minimum Euclidean distance
+    # to any solution in the true Pareto front.
     distances = [np.min(np.linalg.norm(true_pareto - sol, axis=1)) for sol in objs]
     return np.mean(distances)
 
@@ -223,6 +238,7 @@ def compute_coverage(setA: List[Tuple[np.ndarray, np.ndarray]],
         for decision_a, obj_a in setA:
             if dominates(obj_a, obj_b, epsilon):
                 dominated_count += 1
+                break
                 # No need to check other solutions in setA
     return dominated_count / len(setB)
 
