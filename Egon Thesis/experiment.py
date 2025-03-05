@@ -168,7 +168,7 @@ if __name__ == '__main__':
     runs = 5
     use_random_instance = False
     num_tasks = 10
-    POPULATION = 5
+    POPULATION = 10
     ITERATIONS = 30
     tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3}) if use_random_instance else get_default_tasks()
 
