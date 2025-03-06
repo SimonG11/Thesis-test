@@ -120,45 +120,117 @@ def find_earliest_start(earliest: float, duration: float, allocated: float,
     last_finish = max(task["finish"] for task in tasks_r)
     return last_finish + epsilon
 
-def convertDurationtodays (duration):
-    days = 0 
-    while duration >= 0:
-        if duration > 4:
-            duration -= 8
-            days +=1
-        else:
-            duration -= 4
-            days +=0.5
-    return days
 
-def convertDurationtodaysCost (duration, alloc):
-    ActualAcualEffort = 0
-    if int(alloc) == alloc:    
-        while duration >= 0:
-            if duration > 4:
-                duration -= 8
-                ActualAcualEffort += 8
-            else:
-                duration -= 4
-                #days +=0.5
-                ActualAcualEffort +=4
-        return ActualAcualEffort * alloc 
+# Named constants for clarity.
+DAY_HOURS_FULL = 8    # Full working day in billable hours.
+DAY_HOURS_HALF = DAY_HOURS_FULL / 2    # Half working day in billable hours.
+
+def convert_hours_to_billable_days(duration: float) -> float:
+    """
+    Convert a duration (in hours) to billable days.
+    
+    Business Rules:
+      - Non-positive durations return 0.0 days.
+      - Durations ≤ DAY_HOURS_HALF (4 hours) count as a half day (0.5).
+      - Durations > DAY_HOURS_HALF and ≤ DAY_HOURS_FULL (8 hours) count as a full day (1.0).
+      - For durations > DAY_HOURS_FULL:
+            Compute full days = duration // DAY_HOURS_FULL.
+            Let remainder = duration - (full_days * DAY_HOURS_FULL).
+            If remainder is ≤ DAY_HOURS_HALF, add 0.5 day; otherwise, add 1.0 day.
+    
+    Examples:
+      • 1.25 or 4 hours   → 0.5 day
+      • 4.1, 7.9, or 8 hours → 1.0 day
+      • 10 hours           → 1 full day + 0.5 day = 1.5 days
+      • 13 hours           → 1 full day + 1.0 day = 2.0 days
+      • 16 hours           → 2 full days = 2.0 days
+    """
+    if duration <= 0:
+        return 0.0
+    full_days = int(duration // DAY_HOURS_FULL)
+    remainder = duration - full_days * DAY_HOURS_FULL
+    if remainder == 0:
+        extra = 0.0
+    elif remainder <= DAY_HOURS_HALF:
+        extra = 0.5
     else:
-        alloc -= 0.5
-        halfduration = duration / 2 
-        while duration >= 0:
-            if duration > 4:
-                duration -= 8
-                ActualAcualEffort += 8
+        extra = 1.0
+    return full_days + extra
+
+def compute_billable_hours(duration: float) -> float:
+    """
+    Convert a duration (in hours) to billable hours.
+    
+    Billing Conversion:
+      - Each full day is billed as DAY_HOURS_FULL hours.
+      - Each half day is billed as DAY_HOURS_HALF hours.
+    
+    Examples:
+      • 3 hours → 0.5 day → 4 billable hours.
+      • 4.1 hours → 1.0 day → 8 billable hours.
+      • 10 hours → 1.5 days → 12 billable hours.
+      • 13 hours → 2.0 days → 16 billable hours.
+    """
+    billable_days = convert_hours_to_billable_days(duration)
+    full_days = int(billable_days)
+    half_day = 1 if (billable_days - full_days) >= 0.5 else 0
+    return full_days * DAY_HOURS_FULL + half_day * DAY_HOURS_HALF
+
+def compute_billable_cost(duration: float, allocation: float, wage_rate: float) -> float:
+    """
+    Compute the total labor cost given a task's duration (in hours), worker allocation, and wage rate.
+    
+    Let F be the computed billable hours.
+    For a full worker (allocation = 1): cost = F * wage_rate.
+    
+    For a pure half worker (allocation < 1):
+      - If duration < 2 hours, charge half of the full worker cost.
+      - Otherwise, if F ≤ DAY_HOURS_FULL, charge the full worker cost;
+        if F > DAY_HOURS_FULL, subtract a discount computed as (DAY_HOURS_HALF * wage_rate) / 2.
+    
+    For a mixed allocation (allocation ≥ 1), interpret allocation as:
+      (integer number of full workers) plus a half worker if the fractional part is ≥ 0.5.
+      Then, cost = (number of full workers * full_cost) + (if half worker present, add full_cost/2).
+    
+    Examples (with wage_rate = 50):
+      - Full worker (allocation = 1):
+          • 3 hours: F = 4 → cost = 4 * 50 = 200.
+          • 10 hours: F = 12 → cost = 12 * 50 = 600.
+      - Pure half worker (allocation = 0.5):
+          • 1 hour: F = 4, duration < 2 → cost = (4 * 50) / 2 = 100.
+          • 3 hours: F = 4, duration ≥ 2 → cost = 4 * 50 = 200.
+          • 8 hours: F = 8 → cost = 8 * 50 = 400.
+          • 10 hours: F = 12 → cost = (12 * 50) - ((DAY_HOURS_HALF * 50) / 2)
+                      = 600 - ( (4*50)/2 ) = 600 - 100 = 500.
+          • 18 hours: F = 20 → cost = (20 * 50) - ((DAY_HOURS_HALF * 50) / 2)
+                      = 1000 - 100 = 900.
+      - Mixed allocation (allocation = 1.5):
+          • 3 hours: cost = (1 * 200) + (200/2) = 200 + 100 = 300.
+          • 10 hours: cost = (1 * 600) + (600/2) = 600 + 300 = 900.
+          • For allocation = 2.5 and 13 hours (F = 16, wage_rate = 40):
+              cost = (2 * 16 * 40) + (16 * 40)/2 = 1280 + 320 = 1600.
+    """
+    F = compute_billable_hours(duration)
+    full_cost = F * wage_rate
+    if allocation < 1:
+        # Pure half worker.
+        if duration < 2:
+            return full_cost / 2
+        else:
+            if F <= DAY_HOURS_FULL:
+                return full_cost
             else:
-                duration -= 4
-                #days +=0.5
-                ActualAcualEffort +=4
-        ActualAcualEffort *= alloc
-        ActualAcualEffort += ((halfduration // 4)*4)
-        if (halfduration % 4) != 0:
-            ActualAcualEffort += 4
-        return ActualAcualEffort
+                # Discount computed as half the cost of a half-day.
+                discount = (DAY_HOURS_HALF * wage_rate) / 2
+                return full_cost - discount
+    else:
+        full_workers = int(allocation)
+        fractional = allocation - full_workers
+        if fractional >= 0.5:
+            return full_workers * full_cost + full_cost / 2
+        else:
+            return full_workers * full_cost
+
 
 # ---------------------------------------------------------------------------
 # Chaotic Initialization using Logistic Map
@@ -189,7 +261,7 @@ def get_default_tasks() -> List[Dict[str, Any]]:
     This fixed instance supports reproducible experiments and benchmark comparisons.
     """
     return [
-        {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80,  "min": 1, "max": 14, "dependencies": [],         "resource": "Manager"},
+        {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80,  "min": 0.5, "max": 14, "dependencies": [],         "resource": "Manager"},
         {"id": 2, "task_name": "System Design",          "base_effort": 100, "min": 1, "max": 14, "dependencies": [1],        "resource": "Manager"},
         {"id": 3, "task_name": "Module 1 Development",   "base_effort": 150, "min": 1, "max": 14, "dependencies": [2],        "resource": "Developer"},
         {"id": 4, "task_name": "Module 2 Development",   "base_effort": 150, "min": 1, "max": 14, "dependencies": [2],        "resource": "Developer"},
@@ -242,9 +314,13 @@ class RCPSPModel:
             # Use half-step rounding for worker allocation.
             alloc = round_half(x[tid - 1])
             alloc = max(task["min"], min(effective_max, alloc))
-            new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
-            duration = new_effort / alloc
-            duration = convertDurationtodays(duration)
+            if alloc == 0.5:
+                new_effort = task["base_effort"] * 1.2 #Increse effor by 20% if you are only allowed to work 50% with the condition that you work alone
+                duration = new_effort
+            else:
+                new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
+                duration = new_effort / alloc
+            duration = convert_hours_to_billable_days(duration)
             earliest = max([finish_times[dep] for dep in task["dependencies"]]) if task["dependencies"] else 0
             candidate_start = find_earliest_start(earliest, duration, alloc, schedule, capacity, resource_type)
             start_time = candidate_start
@@ -272,7 +348,7 @@ class RCPSPModel:
         return self.compute_schedule(x)
 
 # =============================================================================
-# ----------------------- Objective Functions (Using Model) -----------------
+# ----------------------- Objective Functions -------------------------------
 # =============================================================================
 
 def objective_makespan(x: np.ndarray, model: RCPSPModel) -> float:
@@ -293,9 +369,10 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         alloc = max(task["min"], min(effective_max, alloc))
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
         duration = new_effort / alloc
-        totaleffort = convertDurationtodaysCost(duration, alloc)
         wage_rate = model.worker_cost[resource_type]
-        total_cost += totaleffort * wage_rate
+        task_cost = compute_billable_cost(duration, alloc, wage_rate)
+        total_cost += task_cost
+
     return total_cost
 
 def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
@@ -1234,6 +1311,154 @@ def run_unit_tests() -> None:
     else:
         logging.error("Unit Test Failed: RCPSP schedule computation issue.")
 
+def run_unit_tests() -> None:
+    """
+    Run basic unit tests:
+      1. Test that update_archive_with_crowding produces a non-dominated archive.
+      2. Test that RCPSPModel.compute_schedule returns a feasible schedule.
+      3. Test that the new conversion functions handle edge cases and typical durations.
+    """
+    # ---------------- Archive and Schedule Tests ----------------
+    sol1 = np.array([1, 2, 3])
+    obj1 = np.array([10, 20, 30])
+    sol2 = np.array([2, 3, 4])
+    obj2 = np.array([12, 22, 32])
+    archive = []
+    archive = update_archive_with_crowding(archive, (sol1, obj1))
+    archive = update_archive_with_crowding(archive, (sol2, obj2))
+    if len(archive) != 1:
+        logging.error("Unit Test Failed: Archive contains dominated solutions.")
+    else:
+        logging.info("Unit Test Passed: Archive update produces non-dominated set.")
+
+    workers = {"Developer": 5, "Manager": 2, "Tester": 3}
+    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
+    tasks = get_default_tasks()
+    model = RCPSPModel(tasks, workers, worker_cost)
+    x = np.array([task["min"] for task in tasks])
+    schedule, ms = model.compute_schedule(x)
+    if schedule and ms > 0:
+        logging.info("Unit Test Passed: RCPSP schedule is computed successfully.")
+    else:
+        logging.error("Unit Test Failed: RCPSP schedule computation issue.")
+
+    # ---------------- Conversion Function Tests ----------------
+    # Test convert_hours_to_billable_days:
+    # - For non-positive durations, expect 0.0 billable days.
+    if convert_hours_to_billable_days(0) != 0.0 or convert_hours_to_billable_days(-5) != 0.0:
+        logging.error("Unit Test Failed: convert_hours_to_billable_days did not return 0.0 for non-positive durations.")
+    else:
+        logging.info("Unit Test Passed: convert_hours_to_billable_days handles non-positive durations correctly.")
+
+    # - For durations ≤ 4 hours, count as half day (0.5).
+    if convert_hours_to_billable_days(1.25) != 0.5 or convert_hours_to_billable_days(4) != 0.5:
+        logging.error("Unit Test Failed: convert_hours_to_billable_days did not count durations ≤4 hours as 0.5 day.")
+    else:
+        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly counts durations ≤4 hours as half day.")
+
+    # - For durations > 4 and ≤8 hours, count as full day (1.0).
+    if convert_hours_to_billable_days(4.1) != 1.0 or convert_hours_to_billable_days(7.9) != 1.0 or convert_hours_to_billable_days(8) != 1.0:
+        logging.error("Unit Test Failed: convert_hours_to_billable_days did not count durations >4 and ≤8 hours as 1 day.")
+    else:
+        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly counts durations >4 and ≤8 hours as full day.")
+
+    # - For durations >8 hours, ensure proper division into full days and remainder.
+    #   10 hours → 8 + 2 hours → 1 full day + 0.5 day = 1.5 days.
+    if convert_hours_to_billable_days(10) != 1.5:
+        logging.error("Unit Test Failed: convert_hours_to_billable_days did not correctly count 10 hours as 1.5 days.")
+    else:
+        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly converts 10 hours to 1.5 days.")
+    #   13 hours → 8 + 5 hours → 1 full day + 1 full day (since 5 > 4) = 2.0 days.
+    if convert_hours_to_billable_days(13) != 2.0:
+        logging.error("Unit Test Failed: convert_hours_to_billable_days did not correctly count 13 hours as 2.0 days.")
+    else:
+        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly converts 13 hours to 2.0 days.")
+    #   16 hours → exactly 2 full days = 2.0 days.
+    if convert_hours_to_billable_days(16) != 2.0:
+        logging.error("Unit Test Failed: convert_hours_to_billable_days did not correctly count 16 hours as 2.0 days.")
+    else:
+        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly converts 16 hours to 2.0 days.")
+
+    # Test compute_billable_hours:
+    # - A half day should be billed as 4 hours and a full day as 8 hours.
+    #   3 hours (0.5 day) → 4 billable hours.
+    if compute_billable_hours(3) != 4:
+        logging.error("Unit Test Failed: compute_billable_hours did not convert 3 hours to 4 billable hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_hours correctly converts 3 hours to 4 billable hours.")
+    #   4.1 hours (1 day) → 8 billable hours.
+    if compute_billable_hours(4.1) != 8:
+        logging.error("Unit Test Failed: compute_billable_hours did not convert 4.1 hours to 8 billable hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_hours correctly converts 4.1 hours to 8 billable hours.")
+    #   10 hours (1.5 days) → 12 billable hours.
+    if compute_billable_hours(10) != 12:
+        logging.error("Unit Test Failed: compute_billable_hours did not convert 10 hours to 12 billable hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_hours correctly converts 10 hours to 12 billable hours.")
+    #   13 hours (2 days) → 16 billable hours.
+    if compute_billable_hours(13) != 16:
+        logging.error("Unit Test Failed: compute_billable_hours did not convert 13 hours to 16 billable hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_hours correctly converts 13 hours to 16 billable hours.")
+
+    # Test compute_billable_cost:
+    # For a full worker (allocation = 1)
+    #   - 3 hours → 4 billable hours, cost = 4 * wage_rate.
+    if compute_billable_cost(3, 1, 50) != 200:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for full worker with 3 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for full worker with 3 hours.")
+    #   - 10 hours → 12 billable hours, cost = 12 * wage_rate.
+    if compute_billable_cost(10, 1, 50) != 600:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for full worker with 10 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for full worker with 10 hours.")
+
+    # For a half worker (allocation = 0.5)
+    #   - 3 hours: 4 billable hours → half worker billed hours = 4 / 2 = 2; cost = 2 * wage_rate.
+    if compute_billable_cost(1, 0.5, 50) != 100:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 1 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 1 hours.")
+    if compute_billable_cost(3, 0.5, 50) != 200:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 3 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 3 hours.")
+    if compute_billable_cost(8, 0.5, 50) != 400:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 8 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 8 hours.")
+
+    if compute_billable_cost(10, 0.5, 50) != 500:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 10 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 10 hours.")
+
+    if compute_billable_cost(18, 0.5, 50) != 900:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 18 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 18 hours.")
+
+    # For a mixed allocation (e.g., 1.5, meaning one full worker + one half worker):
+    #   - 3 hours: full worker cost = 4 * 50 = 200; half worker cost = (4 / 2) * 50 = 100; total = 300.
+    if compute_billable_cost(3, 1.5, 50) != 300:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (1.5) with 3 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (1.5) with 3 hours.")
+    #   - 10 hours: full worker cost = 12 * 50 = 600; half worker cost = (12 / 2) * 50 = 300; total = 900.
+    if compute_billable_cost(10, 1.5, 50) != 900:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (1.5) with 10 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (1.5) with 10 hours.")
+    #   - 13 hours (16 billable hours) with allocation = 2.5:
+    #       Full workers: 2 → 2 * 16 = 32; half worker: 1 → 16 / 2 = 8; total = 40; wage_rate = 40; cost = 40 * 40 = 1600.
+    if compute_billable_cost(13, 2.5, 40) != 1600:
+        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (2.5) with 13 hours.")
+    else:
+        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (2.5) with 13 hours.")
+
+
 # =============================================================================
 # ------------------------- Main Comparison ----------------------------------
 # =============================================================================
@@ -1244,8 +1469,8 @@ if __name__ == '__main__':
     runs = 1  # Number of independent runs for statistical significance
     use_random_instance = False  # Set True for random instances
     num_tasks = 10
-    POP = 50
-    ITER = 200
+    POP = 10
+    ITER = 1
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
@@ -1259,16 +1484,16 @@ if __name__ == '__main__':
     
     means, stds = statistical_analysis(results)
     
-    plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
-    plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
-    plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
-    plot_convergence(results["Generational_Distance"], "Generational Distance")
+    #plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
+    #plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
+    #plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
+    #plot_convergence(results["Generational_Distance"], "Generational Distance")
     
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
-    plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
-    plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    #plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    #plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
