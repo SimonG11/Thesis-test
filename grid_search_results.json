@@ -1,0 +1,138 @@
+{
+    "MOHHO": [],
+    "PSO": [],
+    "MOACO": [
+        {
+            "pop": 50,
+            "iters": 400,
+            "colony_percentage": 20,
+            "colony_count": 10,
+            "makespan": [
+                34.0
+            ],
+            "hypervolume": [
+                52.7
+            ],
+            "spread": [
+                6315.92239522709
+            ],
+            "generational_distance": [
+                0.0
+            ],
+            "avg_makespan": 34.0,
+            "avg_hv": 52.7,
+            "avg_spread": 6315.92239522709,
+            "avg_gd": 0.0
+        },
+        {
+            "pop": 50,
+            "iters": 400,
+            "colony_percentage": 30,
+            "colony_count": 15,
+            "makespan": [
+                34.0
+            ],
+            "hypervolume": [
+                51.800000000000004
+            ],
+            "spread": [
+                6557.818014576148
+            ],
+            "generational_distance": [
+                0.0
+            ],
+            "avg_makespan": 34.0,
+            "avg_hv": 51.800000000000004,
+            "avg_spread": 6557.818014576148,
+            "avg_gd": 0.0
+        },
+        {
+            "pop": 50,
+            "iters": 400,
+            "colony_percentage": 40,
+            "colony_count": 20,
+            "makespan": [
+                34.0
+            ],
+            "hypervolume": [
+                52.0
+            ],
+            "spread": [
+                6674.201896905398
+            ],
+            "generational_distance": [
+                0.0
+            ],
+            "avg_makespan": 34.0,
+            "avg_hv": 52.0,
+            "avg_spread": 6674.201896905398,
+            "avg_gd": 0.0
+        },
+        {
+            "pop": 50,
+            "iters": 400,
+            "colony_percentage": 50,
+            "colony_count": 25,
+            "makespan": [
+                34.0
+            ],
+            "hypervolume": [
+                54.2
+            ],
+            "spread": [
+                6597.258513766326
+            ],
+            "generational_distance": [
+                0.0
+            ],
+            "avg_makespan": 34.0,
+            "avg_hv": 54.2,
+            "avg_spread": 6597.258513766326,
+            "avg_gd": 0.0
+        },
+        {
+            "pop": 50,
+            "iters": 400,
+            "colony_percentage": 60,
+            "colony_count": 30,
+            "makespan": [
+                34.0
+            ],
+            "hypervolume": [
+                53.300000000000004
+            ],
+            "spread": [
+                6736.431854752537
+            ],
+            "generational_distance": [
+                0.0
+            ],
+            "avg_makespan": 34.0,
+            "avg_hv": 53.300000000000004,
+            "avg_spread": 6736.431854752537,
+            "avg_gd": 0.0
+        },
+        {
+            "pop": 50,
+            "iters": 400,
+            "colony_percentage": 70,
+            "colony_count": 35,
+            "makespan": [
+                34.0
+            ],
+            "hypervolume": [
+                52.5
+            ],
+            "spread": [
+                6624.984910054556
+            ],
+            "generational_distance": [
+                0.0
+            ],
+            "avg_makespan": 34.0,
+            "avg_hv": 52.5,
+            "avg_spread": 6624.984910054556,
+            "avg_gd": 0.0
+        }
+    ]
+}

@@ -501,6 +501,19 @@ def compute_spread(archive: List[Tuple[np.ndarray, np.ndarray]]) -> float:
     dists = [np.linalg.norm(objs[i] - objs[j]) for i in range(len(objs)) for j in range(i+1, len(objs))]
     return np.mean(dists)
 
+def compute_combined_ideal(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
+    """
+    Compute the combined ideal point from multiple archives.
+    """
+    union_archive = []
+    for alg in archives_all:
+        for archive in archives_all[alg]:
+            union_archive.extend(archive)
+    if not union_archive:
+        raise ValueError("No archive entries found.")
+    objs = np.array([entry[1] for entry in union_archive])
+    ideal = np.min(objs, axis=0)
+    return ideal
 # ---------------------------------------------------------------------------
 # Fixed Reference Point Calculation for Hypervolume Comparison
 # ---------------------------------------------------------------------------
@@ -1182,6 +1195,160 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             no_improvement_count = 0
     return archive, progress
 
+def grid_search():
+    """
+    Grid search over algorithm parameters to tune multi-objective performance.
+    
+    For each algorithm (MOHHO, MOPSO (PSO), MOACO):
+      - Population sizes: 100, 300, 500, 700, 1000
+      - Iteration counts: 300, 500, 750, 1000, 2000
+    Additionally for MOACO:
+      - Colony count as a percentage of the ant population: 5%, 10%, 20%, 30%
+    
+    Each combination is run 5 times (to mitigate stochastic effects).
+    Performance is evaluated using a combination of best makespan, absolute hypervolume,
+    spread (diversity) and generational distance.
+    
+    The results are stored in a JSON file for further analysis.
+    """
+
+    # Define grid search ranges
+    populations = [100, 300, 500, 700, 1000]
+    iterations_list = [300, 500, 750, 1000, 2000]
+    colony_percentages = [40 ,45, 50, 55, 60]  # Only for MOACO, 50% best so far
+    runs = 1  # Independent runs per combination
+
+    # Fixed RCPSP instance (using default tasks)
+    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
+    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
+    tasks = get_default_tasks()  # Fixed instance for reproducibility
+
+    # Dictionary to store grid search results per algorithm
+    results_grid = {"MOHHO": [], "PSO": [], "MOACO": []}
+
+    # Grid search for each algorithm
+    for algorithm in ["MOACO"]:
+        print("ny algorithm", algorithm)
+        for pop in populations:
+            print("ny pop:", pop)
+            for iters in iterations_list:
+                print("ny iter", iters)
+                if algorithm == "MOACO":
+                    # Loop over colony percentages (as a percentage of ant_count = pop)
+                    for col_pct in colony_percentages:
+                        print("Ny koloni", col_pct)
+                        colony_count = max(1, int(pop * (col_pct / 100)))
+                        metrics = {
+                            "pop": pop,
+                            "iters": iters,
+                            "colony_percentage": col_pct,
+                            "colony_count": colony_count,
+                            "makespan": [],
+                            "hypervolume": [],
+                            "spread": [],
+                            "generational_distance": []
+                        }
+                        for r in range(runs):
+                            print("Ny run", r)
+                            # Create RCPSP model instance
+                            model = RCPSPModel(tasks, workers, worker_cost)
+                            dim = len(model.tasks)
+                            lb_current = np.array([task["min"] for task in tasks])
+                            ub_current = np.array([task["max"] for task in tasks])
+                            
+                            # Run MOACO_improved with current grid parameters.
+                            archive, _ = MOACO_improved(
+                                lambda x: multi_objective(x, model),
+                                tasks, workers, lb_current, ub_current,
+                                ant_count=pop, max_iter=iters,
+                                alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0,
+                                colony_count=colony_count
+                            )
+                            # Extract performance metrics from the archive
+                            if archive:
+                                best_ms = min(entry[1][0] for entry in archive)
+                                # For hypervolume and spread, define fixed reference and global lower bound based on archive.
+                                objs = np.array([entry[1] for entry in archive])
+                                fixed_ref = np.max(objs, axis=0)
+                                global_lower_bound = np.min(objs, axis=0)
+                                hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
+                                spread_val = compute_spread(archive)
+                                gd = compute_generational_distance(archive, objs)
+                            else:
+                                best_ms, hv, spread_val, gd = None, None, None, None
+                            
+                            metrics["makespan"].append(best_ms)
+                            metrics["hypervolume"].append(hv)
+                            metrics["spread"].append(spread_val)
+                            metrics["generational_distance"].append(gd)
+                        
+                        # Compute average metrics over runs
+                        metrics["avg_makespan"] = np.mean([m for m in metrics["makespan"] if m is not None])
+                        metrics["avg_hv"] = np.mean([h for h in metrics["hypervolume"] if h is not None])
+                        metrics["avg_spread"] = np.mean([s for s in metrics["spread"] if s is not None])
+                        metrics["avg_gd"] = np.mean([g for g in metrics["generational_distance"] if g is not None])
+                        results_grid["MOACO"].append(metrics)
+                else:
+                    # For MOHHO and PSO
+                    metrics = {
+                        "pop": pop,
+                        "iters": iters,
+                        "makespan": [],
+                        "hypervolume": [],
+                        "spread": [],
+                        "generational_distance": []
+                    }
+                    for r in range(runs):
+                        model = RCPSPModel(tasks, workers, worker_cost)
+                        dim = len(model.tasks)
+                        lb_current = np.array([task["min"] for task in tasks])
+                        ub_current = np.array([task["max"] for task in tasks])
+                        
+                        if algorithm == "MOHHO":
+                            archive, _ = MOHHO_with_progress(
+                                lambda x: multi_objective(x, model),
+                                lb_current, ub_current, dim, pop, iters
+                            )
+                        elif algorithm == "PSO":
+                            objectives = [
+                                lambda x: objective_makespan(x, model),
+                                lambda x: objective_total_cost(x, model),
+                                lambda x: objective_neg_utilization(x, model)
+                            ]
+                            optimizer = PSO(
+                                dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
+                                pop=pop, c2=1.05, w_max=0.9, w_min=0.4,
+                                disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20
+                            )
+                            _ = optimizer.run(max_iter=iters)
+                            archive = optimizer.archive
+                        
+                        if archive:
+                            best_ms = min(entry[1][0] for entry in archive)
+                            objs = np.array([entry[1] for entry in archive])
+                            fixed_ref = np.max(objs, axis=0)
+                            global_lower_bound = np.min(objs, axis=0)
+                            hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
+                            spread_val = compute_spread(archive)
+                            gd = compute_generational_distance(archive, objs)
+                        else:
+                            best_ms, hv, spread_val, gd = None, None, None, None
+
+                        metrics["makespan"].append(best_ms)
+                        metrics["hypervolume"].append(hv)
+                        metrics["spread"].append(spread_val)
+                        metrics["generational_distance"].append(gd)
+                    
+                    metrics["avg_makespan"] = np.mean([m for m in metrics["makespan"] if m is not None])
+                    metrics["avg_hv"] = np.mean([h for h in metrics["hypervolume"] if h is not None])
+                    metrics["avg_spread"] = np.mean([s for s in metrics["spread"] if s is not None])
+                    metrics["avg_gd"] = np.mean([g for g in metrics["generational_distance"] if g is not None])
+                    results_grid[algorithm].append(metrics)
+    
+    # Save the grid search results to a JSON file for further analysis.
+    with open("grid_search_results.json", "w") as f:
+        json.dump(results_grid, f, indent=4)
+    print("Grid search complete. Results saved to grid_search_results.json.")
 
 # =============================================================================
 # ------------------------- Experiment Runner -------------------------------
@@ -1205,11 +1372,12 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
     ub_current = np.array([task["max"] for task in model.tasks])
     
     results = {
-        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
-        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
-        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
+        "MOHHO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
+        "PSO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
+        "MOACO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
         "Baseline": {"makespan": []}
     }
+
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
     base_schedules = []
 
@@ -1250,10 +1418,12 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
 
+    global_lower_bound = compute_combined_ideal(archives_all)
+
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
-            norm_hv = normalized_hypervolume_fixed(archive, fixed_ref)
-            results[alg]["normalized_hypervolume"].append(norm_hv)
+            abs_hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
+            results[alg]["absolute_hypervolume"].append(abs_hv)
             sp = compute_spread(archive)
             results[alg]["spread"].append(sp)
 
@@ -1463,6 +1633,7 @@ def run_unit_tests() -> None:
     # For a mixed allocation (e.g., 1.5, meaning one full worker + one half worker):
     #   - 3 hours: full worker cost = 4 * 50 = 200; half worker cost = (4 / 2) * 50 = 100; total = 300.
     if compute_billable_cost(3, 1.5, 50) != 300:
+
         logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (1.5) with 3 hours.")
     else:
         logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (1.5) with 3 hours.")
@@ -1484,13 +1655,21 @@ def run_unit_tests() -> None:
 # =============================================================================
 
 if __name__ == '__main__':
+    """
+    In the benchmark experiments,we set 
+    the maximum iteration number to be 500, 
+    the number of search agents to be 100, and 
+    the  maximum  archive  size  to be 100.
+    To  obtain  the statistical results, the MOHHO and others are run 10 times.
+    Yüzgeç & Kuşoğlu (2020)
+    """
     run_unit_tests()
-    
-    runs = 1  # Number of independent runs for statistical significance
+    grid_search()
+    runs = 1 # Number of independent runs for statistical significance
     use_random_instance = False  # Set True for random instances
     num_tasks = 10
     POP = 10
-    ITER = 1
+    ITER = 30
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
@@ -1504,28 +1683,20 @@ if __name__ == '__main__':
     
     means, stds = statistical_analysis(results)
     
-    #plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
-    plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
-    #plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
-    #plot_convergence(results["Generational_Distance"], "Generational Distance")
+    
+    plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
+    plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
+    plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
+    plot_convergence(results["Generational_Distance"], "Generational Distance")
     
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
-    #plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
-    #plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
     #plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
-    
-    logging.info("Starting grid search for PSO population size...")
-    pop_sizes = [10, 20, 30]
-    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
-    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    default_tasks = get_default_tasks()
-    model_for_grid = RCPSPModel(default_tasks, workers, worker_cost)
-    lb_array = np.array([task["min"] for task in default_tasks])
-    ub_array = np.array([task["max"] for task in default_tasks])
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")

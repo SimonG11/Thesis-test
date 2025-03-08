@@ -501,6 +501,19 @@ def compute_spread(archive: List[Tuple[np.ndarray, np.ndarray]]) -> float:
     dists = [np.linalg.norm(objs[i] - objs[j]) for i in range(len(objs)) for j in range(i+1, len(objs))]
     return np.mean(dists)
 
+def compute_combined_ideal(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
+    """
+    Compute the combined ideal point from multiple archives.
+    """
+    union_archive = []
+    for alg in archives_all:
+        for archive in archives_all[alg]:
+            union_archive.extend(archive)
+    if not union_archive:
+        raise ValueError("No archive entries found.")
+    objs = np.array([entry[1] for entry in union_archive])
+    ideal = np.min(objs, axis=0)
+    return ideal
 # ---------------------------------------------------------------------------
 # Fixed Reference Point Calculation for Hypervolume Comparison
 # ---------------------------------------------------------------------------
@@ -970,96 +983,171 @@ class PSO:
             best_ms = min(p['obj'][0] for p in self.swarm)
             convergence.append(best_ms)
         return convergence
+    
+
 
 def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
-                    tasks: List[Dict[str, Any]], workers: Dict[str, int],
-                    lb: np.ndarray, ub: np.ndarray, ant_count: int, max_iter: int,
-                    alpha: float = 1.0, beta: float = 2.0, evaporation_rate: float = 0.1,
-                    Q: float = 100.0, P: float = 0.6, w1: float = 1.0, w2: float = 1.0,
-                    sigma_share: float = 1.0, lambda3: float = 2.0, lambda4: float = 5.0,
-                    colony_count: int = 10) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
+                    tasks: List[Dict[str, Any]], 
+                    lb: np.ndarray, ub: np.ndarray, 
+                    ant_count: int, max_iter: int,
+                    alpha: float = 1.0,
+                    beta: float = 2.0,
+                    evaporation_rate: float = 0.1,
+                    w1: float = 1.0,
+                    lambda3: float = 2.0,
+                    colony_count: int = 10,
+                    heuristic_obj: Optional[Callable[[Dict[str, Any], float, int], List[float]]] = None
+                   ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
-    MOACO_improved implements a multi-objective Ant Colony Optimization for RCPSP with several enhancements.
-
-    MOACO_improved implements a multi-objective ACO for RCPSP with several enhancements.
-    Base algorithm concept from Distributed Optimization by Ant Colonies
-    https://www.researchgate.net/publication/216300484_Distributed_Optimization_by_Ant_Colonies
-
-    Enhancements and their scientific justifications:
-    1. Chaotic Initialization:
-       - Uses a logistic chaotic map to improve the diversity of the initial population.
-       - Citation: Sun et al. (2019) "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-       - https://doi.org/10.3390/math7020146
-
-    2. Adaptive Evaporation:
-       - Increases the evaporation rate when the variance of pheromone values is low, preventing premature convergence.
-       - Citation: Zhao et al. (2018) (adaptive evaporation approaches in ACO)
-       - https://doi.org/10.3390/sym10040104
-
-    3. Ranking-Based Pheromone Deposit Using Crowding Distance:
-       - Computes the crowding distance of archive solutions (inspired by NSGA-II [Deb, 2002]) and deposits pheromone proportional to the normalized crowding distance.
-       - A decay factor is applied so that deposits diminish over time, shifting the search from exploration to exploitation.
-       - Citations: Deb, K. (2002) "Multi-Objective Optimization Using Evolutionary Algorithms" and indicator-based methods (e.g., Zitzler & Künzli, 2004).
-       - https://doi.org/10.1109/4235.996017
-       - https://doi.org/10.1007/978-3-540-30217-9_84
-
-    4. Multi-Colony Pheromone Updates and Periodic Reinitialization:
-       - Maintains separate pheromone matrices per colony and merges them periodically.
-       - Helps explore multiple regions of the search space.
-       - Citation: Angus & Woodward (2009) for multi-colony ACO approaches.
-       - https://doi-org.miman.bib.bth.se/10.1007/s11721-008-0022-4
-
-    5. Local Search and Diversity Injection:
-       - Employs extended local search (±1 and ±2 perturbations) and diversity-driven injection of new ants when stagnation is detected.
-       - Citation: López-Ibáñez et al. (2012) for extended local search, and Yüzgeç & Kuşoğlu (2020) for diversity-driven injection.
-       - https://doi-org.miman.bib.bth.se/10.1007/s11721-012-0070-7
-       - https://bseujert.bilecik.edu.tr/index.php/bseujert/article/view/14/11
-
-    Returns:
-        archive: A list of non-dominated solutions (decision and objective vectors).
-        progress: A list recording the best objective value (e.g., makespan) per iteration.
+    Updated MOACO algorithm with improvements to remove bias toward makespan.
+    This version uses Tchebycheff scalarization for heuristic ranking and Pareto-based candidate selection
+    during local search.
     """
+
+        # ---------------- Helper Functions ----------------
+    def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Min–max scales each column of 'mat' to the [0,1] interval."""
+        mat = np.array(mat, dtype=float)
+        mins = mat.min(axis=0)
+        maxs = mat.max(axis=0)
+        norm = np.zeros_like(mat)
+        for d in range(mat.shape[1]):
+            range_val = maxs[d] - mins[d]
+            norm[:, d] = (mat[:, d] - mins[d]) / range_val if range_val != 0 else 0.5
+        return norm, mins, maxs
+
+    def normalized_crowding_distance(archive):
+        """
+        Compute the crowding distance for each solution in the archive using normalized objectives.
+        """
+        if not archive:
+            return np.array([])
+        objs = np.array([entry[1] for entry in archive], dtype=float)
+        norm_objs, _, _ = normalize_matrix(objs)
+        num_objs = norm_objs.shape[1]
+        distances = np.zeros(len(archive))
+        for m in range(num_objs):
+            sorted_indices = np.argsort(norm_objs[:, m])
+            distances[sorted_indices[0]] = distances[sorted_indices[-1]] = float('inf')
+            m_values = norm_objs[sorted_indices, m]
+            m_range = m_values[-1] - m_values[0]
+            if m_range == 0:
+                continue
+            for i in range(1, len(archive) - 1):
+                distances[sorted_indices[i]] += (m_values[i+1] - m_values[i-1]) / m_range
+        return distances
+
+    def fast_non_dominated_sort(candidates: List[List[float]]) -> List[int]:
+        """
+        Perform fast non-dominated sorting on candidate objective vectors.
+        Returns a list of ranks (lower is better).
+        """
+        n = len(candidates)
+        S = [[] for _ in range(n)]
+        domination_count = [0] * n
+        ranks = [0] * n
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                if (all(candidates[j][k] <= candidates[i][k] for k in range(len(candidates[i]))) and
+                    any(candidates[j][k] < candidates[i][k] for k in range(len(candidates[i])))):
+                    domination_count[i] += 1
+                elif (all(candidates[i][k] <= candidates[j][k] for k in range(len(candidates[i]))) and
+                      any(candidates[i][k] < candidates[j][k] for k in range(len(candidates[i])))):
+                    S[i].append(j)
+            if domination_count[i] == 0:
+                ranks[i] = 1
+        current_front = [i for i in range(n) if domination_count[i] == 0]
+        front_number = 1
+        while current_front:
+            next_front = []
+            for i in current_front:
+                for j in S[i]:
+                    domination_count[j] -= 1
+                    if domination_count[j] == 0:
+                        ranks[j] = front_number + 1
+                        next_front.append(j)
+            front_number += 1
+            current_front = next_front
+        return ranks
+
+    # --- Helper: Compute heuristic for each task using Tchebycheff scalarization ---
+    def compute_task_heuristic(task_index: int) -> Dict[float, float]:
+        possible_values = list(np.arange(lb[task_index], ub[task_index] + 0.5, 0.5))
+        candidate_objs = []
+        for v in possible_values:
+            candidate = np.array([t["min"] for t in tasks])
+            candidate[task_index] = v
+            candidate_objs.append(objf(candidate))
+        candidate_objs = np.array(candidate_objs)
+        # Compute the ideal point (componentwise minimum)
+        ideal = np.min(candidate_objs, axis=0)
+        # Compute Tchebycheff values with equal weights
+        tcheby_vals = [max(abs(candidate_objs[j] - ideal)) for j in range(len(possible_values))]
+        task_heuristic = {v: 1.0 / (tcheby_vals[j] + 1e-6) for j, v in enumerate(possible_values)}
+        return task_heuristic
+
+    # --- Initialization of pheromones and heuristics for each colony ---
     dim = len(lb)
-    # Initialize pheromone and heuristic information for each colony.
-    colony_pheromones = []
-    colony_heuristics = []
-    for _ in range(colony_count):
-        pheromone = []
-        heuristic = []
+    colony_pheromones = []  # One pheromone matrix per colony
+    colony_heuristics = []  # One heuristic matrix per colony
+    for colony_idx in range(colony_count):
+        pheromone_matrix = []
+        heuristic_matrix = []
         for i in range(dim):
             possible_values = list(np.arange(lb[i], ub[i] + 0.5, 0.5))
-            pheromone.append({v: 1.0 for v in possible_values})
-            h_dict = {}
-            task = tasks[i]
-            for v in possible_values:
-                new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (v - 1))
-                duration = new_effort / v
-                h_dict[v] = np.nan_to_num(1.0 / duration, nan=0.0, posinf=0.0, neginf=0.0)
-            heuristic.append(h_dict)
-        colony_pheromones.append(pheromone)
-        colony_heuristics.append(heuristic)
+            pheromone_matrix.append({v: 1.0 for v in possible_values})
+            heuristic_matrix.append(compute_task_heuristic(i))
+        colony_pheromones.append(pheromone_matrix)
+        colony_heuristics.append(heuristic_matrix)
+
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
     ants_per_colony = ant_count // colony_count
     best_global = float('inf')
     no_improvement_count = 0
-    stagnation_threshold = 10  # Inject diversity if no improvement for 10 iterations.
+    stagnation_threshold = 10  # iterations before triggering reinitialization
     eps = 1e-6
 
+    # --- Helper: Pareto-based candidate selection ---
+    def select_best_candidate(candidates: List[np.ndarray], cand_objs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        ranks = fast_non_dominated_sort(cand_objs.tolist())
+        first_front_indices = [i for i, rank in enumerate(ranks) if rank == 1]
+        if len(first_front_indices) == 1:
+            best_idx = first_front_indices[0]
+        else:
+            # Compute crowding distances for candidates in the first front
+            front_objs = np.array([cand_objs[i] for i in first_front_indices])
+            cd = np.zeros(len(front_objs))
+            num_objs = front_objs.shape[1]
+            for m in range(num_objs):
+                sorted_indices = np.argsort(front_objs[:, m])
+                cd[sorted_indices[0]] = cd[sorted_indices[-1]] = float('inf')
+                m_range = front_objs[sorted_indices[-1], m] - front_objs[sorted_indices[0], m]
+                if m_range == 0:
+                    continue
+                for j in range(1, len(front_objs) - 1):
+                    cd[sorted_indices[j]] += (front_objs[sorted_indices[j+1], m] - front_objs[sorted_indices[j-1], m]) / m_range
+            best_in_front = np.argmax(cd)
+            best_idx = first_front_indices[best_in_front]
+        return candidates[best_idx], cand_objs[best_idx]
+
+    # --- Main Iteration Loop ---
     for iteration in range(max_iter):
-        colony_solutions = []
-        # --- Solution Construction and Extended Local Search ---
+        colony_solutions = []  # store solutions from all colonies
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             heuristic = colony_heuristics[colony_idx]
             for _ in range(ants_per_colony):
-                solution: List[float] = []
+                solution = []
+                # Construct solution: for each task, select allocation based on pheromone and heuristic
                 for i in range(dim):
                     possible_values = list(pheromone[i].keys())
                     probs = []
                     for v in possible_values:
-                        tau = np.nan_to_num(pheromone[i][v], nan=0.0, posinf=0.0, neginf=0.0)
-                        h_val = np.nan_to_num(heuristic[i][v], nan=0.0, posinf=0.0, neginf=0.0)
+                        tau = pheromone[i][v]
+                        h_val = heuristic[i][v]
                         probs.append((tau ** alpha) * (h_val ** beta))
                     total = sum(probs)
                     if not np.isfinite(total) or total <= 0:
@@ -1075,64 +1163,34 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                             chosen = v
                             break
                     solution.append(chosen)
-                # Extended Local Search: try ±0.5 perturbations.
-                neighbors = []
+                # Local search: perturb each task’s allocation by ±0.5
+                candidates = [solution]
                 for i in range(dim):
                     for delta in [-0.5, 0.5]:
                         neighbor = solution.copy()
                         neighbor[i] = clip_round_half(neighbor[i] + delta, lb[i], ub[i])
-                        neighbors.append(neighbor)
-                def compare_objs(obj_a, obj_b):
-                    if dominates(obj_a, obj_b):
-                        return True
-                    elif not dominates(obj_b, obj_a) and np.sum(obj_a) < np.sum(obj_b):
-                        return True
-                    return False
-                best_neighbor = solution
-                best_obj = objf(np.array(solution))
-                for neighbor in neighbors:
-                    n_obj = objf(np.array(neighbor))
-                    if compare_objs(n_obj, best_obj):
-                        best_obj = n_obj
-                        best_neighbor = neighbor
-                # If no improvement with ±0.5, try ±1 perturbations.
-                if best_neighbor == solution:
-                    extended_neighbors = []
-                    for i in range(dim):
-                        for delta in [-2.0, 2.0]:
-                            neighbor = solution.copy()
-                            neighbor[i] = clip_round_half(neighbor[i] + delta, lb[i], ub[i])
-                            extended_neighbors.append(neighbor)
-                    for neighbor in extended_neighbors:
-                        n_obj = objf(np.array(neighbor))
-                        if compare_objs(n_obj, best_obj):
-                            best_obj = n_obj
-                            best_neighbor = neighbor
-                solution = best_neighbor
-                obj_val = objf(np.array(solution))
-                colony_solutions.append((solution, obj_val))
-        # Update archive using NSGA-II crowding distance mechanism.
+                        candidates.append(neighbor)
+                candidates = [np.array(c) for c in candidates]
+                cand_objs = np.array([objf(c) for c in candidates], dtype=float)
+                best_candidate, best_obj = select_best_candidate(candidates, cand_objs)
+                colony_solutions.append((best_candidate.tolist(), best_obj.tolist()))
+        # --- Archive update ---
         for sol, obj_val in colony_solutions:
-            archive = update_archive_with_crowding(archive, (np.array(sol), obj_val))
-        
-        # --- Adaptive Evaporation ---
+            archive = update_archive_with_crowding(archive, (np.array(sol), np.array(obj_val)))
+        # --- Pheromone Evaporation ---
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             all_values = []
             for i in range(dim):
                 all_values.extend(list(pheromone[i].values()))
-            all_values = np.nan_to_num(np.array(all_values), nan=0.0, posinf=0.0, neginf=0.0)
+            all_values = np.array(all_values)
             var_pheromone = np.var(all_values)
-            if var_pheromone < 0.001:
-                evap_rate_current = min(0.9, evaporation_rate * 1.5)
-            else:
-                evap_rate_current = evaporation_rate
+            current_evap_rate = evaporation_rate * 1.5 if var_pheromone < 0.001 else evaporation_rate
             for i in range(dim):
                 for v in pheromone[i]:
-                    pheromone[i][v] *= (1 - evap_rate_current)
-        
-        # --- Ranking-based Deposit Update Using Crowding Distance ---
-        crowding = compute_crowding_distance(archive)
+                    pheromone[i][v] *= (1 - current_evap_rate)
+        # --- Pheromone Deposit Update ---
+        crowding = normalized_crowding_distance(archive)
         max_cd = np.max(crowding) if len(crowding) > 0 else 1.0
         if not np.isfinite(max_cd) or max_cd <= 0:
             max_cd = 1.0
@@ -1142,14 +1200,13 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             for colony_idx in range(colony_count):
                 for i, v in enumerate(sol):
                     colony_pheromones[colony_idx][i][v] += deposit
-        
-        # --- Multi-Colony Pheromone Reinitialization ---
+        # --- Multi-Colony Reinitialization and Merge ---
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             all_values = []
             for i in range(dim):
                 all_values.extend(list(pheromone[i].values()))
-            all_values = np.nan_to_num(np.array(all_values), nan=0.0, posinf=0.0, neginf=0.0)
+            all_values = np.array(all_values)
             if np.var(all_values) < 0.001:
                 for i in range(dim):
                     possible_values = list(np.arange(lb[i], ub[i] + 0.5, 0.5))
@@ -1164,15 +1221,21 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             merged_pheromone.append(merged)
         for colony_idx in range(colony_count):
             colony_pheromones[colony_idx] = [merged_pheromone[i].copy() for i in range(dim)]
-        
-        # --- Progress Update & Diversity Injection ---
-        current_best = min(obj_val[0] for _, obj_val in colony_solutions)
-        progress.append(current_best)
-        if current_best < best_global:
-            best_global = current_best
-            no_improvement_count = 0
+        # --- Record Progress ---
+        if archive:
+            objs = np.array([entry[1] for entry in archive])
+            ideal = np.min(objs, axis=0)
+            # Use Tchebycheff scalarization to compute a balanced score
+            tcheby_scores = [max(abs(entry[1] - ideal)) for entry in archive]
+            current_best = min(tcheby_scores)
         else:
+            current_best = float('inf')
+        progress.append(current_best)
+        # --- Stagnation Handling ---
+        if iteration > 0 and progress[-1] >= progress[-2]:
             no_improvement_count += 1
+        else:
+            no_improvement_count = 0
         if no_improvement_count >= stagnation_threshold:
             for colony_idx in range(colony_count):
                 num_to_reinit = max(1, ants_per_colony // 10)
@@ -1182,6 +1245,165 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             no_improvement_count = 0
     return archive, progress
 
+
+# =============================================================================
+# ------------------------- Grid search -------------------------------
+# =============================================================================
+
+def grid_search():
+    """
+    Grid search over algorithm parameters to tune multi-objective performance.
+    
+    For each algorithm (MOHHO, MOPSO (PSO), MOACO):
+      - Population sizes: 100, 300, 500, 700, 1000
+      - Iteration counts: 300, 500, 750, 1000, 2000
+    Additionally for MOACO:
+      - Colony count as a percentage of the ant population: 5%, 10%, 20%, 30%
+    
+    Each combination is run 5 times (to mitigate stochastic effects).
+    Performance is evaluated using a combination of best makespan, absolute hypervolume,
+    spread (diversity) and generational distance.
+    
+    The results are stored in a JSON file for further analysis.
+    """
+
+    # Define grid search ranges
+    populations = [100, 300, 500, 700, 1000]
+    iterations_list = [300, 500, 750, 1000, 2000]
+    colony_percentages = [40 ,45, 50, 55, 60]  # Only for MOACO, 50% best so far
+    runs = 1  # Independent runs per combination
+
+    # Fixed RCPSP instance (using default tasks)
+    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
+    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
+    tasks = get_default_tasks()  # Fixed instance for reproducibility
+
+    # Dictionary to store grid search results per algorithm
+    results_grid = {"MOHHO": [], "PSO": [], "MOACO": []}
+
+    # Grid search for each algorithm
+    for algorithm in ["MOACO"]:
+        print("ny algorithm", algorithm)
+        for pop in populations:
+            print("ny pop:", pop)
+            for iters in iterations_list:
+                print("ny iter", iters)
+                if algorithm == "MOACO":
+                    # Loop over colony percentages (as a percentage of ant_count = pop)
+                    for col_pct in colony_percentages:
+                        print("Ny koloni", col_pct)
+                        colony_count = max(1, int(pop * (col_pct / 100)))
+                        metrics = {
+                            "pop": pop,
+                            "iters": iters,
+                            "colony_percentage": col_pct,
+                            "colony_count": colony_count,
+                            "makespan": [],
+                            "hypervolume": [],
+                            "spread": [],
+                            "generational_distance": []
+                        }
+                        for r in range(runs):
+                            print("Ny run", r)
+                            # Create RCPSP model instance
+                            model = RCPSPModel(tasks, workers, worker_cost)
+                            dim = len(model.tasks)
+                            lb_current = np.array([task["min"] for task in tasks])
+                            ub_current = np.array([task["max"] for task in tasks])
+                            
+                            # Run MOACO_improved with current grid parameters.
+                            archive, _ = MOACO_improved(
+                                lambda x: multi_objective(x, model),
+                                tasks, workers, lb_current, ub_current,
+                                ant_count=pop, max_iter=iters,
+                                alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0,
+                                colony_count=colony_count
+                            )
+                            # Extract performance metrics from the archive
+                            if archive:
+                                best_ms = min(entry[1][0] for entry in archive)
+                                # For hypervolume and spread, define fixed reference and global lower bound based on archive.
+                                objs = np.array([entry[1] for entry in archive])
+                                fixed_ref = np.max(objs, axis=0)
+                                global_lower_bound = np.min(objs, axis=0)
+                                hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
+                                spread_val = compute_spread(archive)
+                                gd = compute_generational_distance(archive, objs)
+                            else:
+                                best_ms, hv, spread_val, gd = None, None, None, None
+                            
+                            metrics["makespan"].append(best_ms)
+                            metrics["hypervolume"].append(hv)
+                            metrics["spread"].append(spread_val)
+                            metrics["generational_distance"].append(gd)
+                        
+                        # Compute average metrics over runs
+                        metrics["avg_makespan"] = np.mean([m for m in metrics["makespan"] if m is not None])
+                        metrics["avg_hv"] = np.mean([h for h in metrics["hypervolume"] if h is not None])
+                        metrics["avg_spread"] = np.mean([s for s in metrics["spread"] if s is not None])
+                        metrics["avg_gd"] = np.mean([g for g in metrics["generational_distance"] if g is not None])
+                        results_grid["MOACO"].append(metrics)
+                else:
+                    # For MOHHO and PSO
+                    metrics = {
+                        "pop": pop,
+                        "iters": iters,
+                        "makespan": [],
+                        "hypervolume": [],
+                        "spread": [],
+                        "generational_distance": []
+                    }
+                    for r in range(runs):
+                        model = RCPSPModel(tasks, workers, worker_cost)
+                        dim = len(model.tasks)
+                        lb_current = np.array([task["min"] for task in tasks])
+                        ub_current = np.array([task["max"] for task in tasks])
+                        
+                        if algorithm == "MOHHO":
+                            archive, _ = MOHHO_with_progress(
+                                lambda x: multi_objective(x, model),
+                                lb_current, ub_current, dim, pop, iters
+                            )
+                        elif algorithm == "PSO":
+                            objectives = [
+                                lambda x: objective_makespan(x, model),
+                                lambda x: objective_total_cost(x, model),
+                                lambda x: objective_neg_utilization(x, model)
+                            ]
+                            optimizer = PSO(
+                                dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
+                                pop=pop, c2=1.05, w_max=0.9, w_min=0.4,
+                                disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20
+                            )
+                            _ = optimizer.run(max_iter=iters)
+                            archive = optimizer.archive
+                        
+                        if archive:
+                            best_ms = min(entry[1][0] for entry in archive)
+                            objs = np.array([entry[1] for entry in archive])
+                            fixed_ref = np.max(objs, axis=0)
+                            global_lower_bound = np.min(objs, axis=0)
+                            hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
+                            spread_val = compute_spread(archive)
+                            gd = compute_generational_distance(archive, objs)
+                        else:
+                            best_ms, hv, spread_val, gd = None, None, None, None
+
+                        metrics["makespan"].append(best_ms)
+                        metrics["hypervolume"].append(hv)
+                        metrics["spread"].append(spread_val)
+                        metrics["generational_distance"].append(gd)
+                    
+                    metrics["avg_makespan"] = np.mean([m for m in metrics["makespan"] if m is not None])
+                    metrics["avg_hv"] = np.mean([h for h in metrics["hypervolume"] if h is not None])
+                    metrics["avg_spread"] = np.mean([s for s in metrics["spread"] if s is not None])
+                    metrics["avg_gd"] = np.mean([g for g in metrics["generational_distance"] if g is not None])
+                    results_grid[algorithm].append(metrics)
+    
+    # Save the grid search results to a JSON file for further analysis.
+    with open("grid_search_results.json", "w") as f:
+        json.dump(results_grid, f, indent=4)
+    print("Grid search complete. Results saved to grid_search_results.json.")
 
 # =============================================================================
 # ------------------------- Experiment Runner -------------------------------
@@ -1205,11 +1427,12 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
     ub_current = np.array([task["max"] for task in model.tasks])
     
     results = {
-        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
-        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
-        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "spread": []},
+        "MOHHO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
+        "PSO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
+        "MOACO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
         "Baseline": {"makespan": []}
     }
+
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
     base_schedules = []
 
@@ -1240,9 +1463,12 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
 
         ant_count = POP
         moaco_iter = ITER
-        archive_moaco, _ = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
-                                          lb_current, ub_current, ant_count, moaco_iter,
-                                          alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
+        archive_moaco, _ = MOACO_improved(
+            lambda x: multi_objective(x, model),
+            model.tasks, lb_current, ub_current, ant_count, moaco_iter,
+            alpha=1.0, beta=2.0, evaporation_rate=0.1,
+            colony_count= (ant_count//2))
+
         best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
         results["MOACO"]["best_makespan"].append(best_ms_moaco)
         archives_all["MOACO"].append(archive_moaco)
@@ -1250,10 +1476,12 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
 
+    global_lower_bound = compute_combined_ideal(archives_all)
+
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
-            norm_hv = normalized_hypervolume_fixed(archive, fixed_ref)
-            results[alg]["normalized_hypervolume"].append(norm_hv)
+            abs_hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
+            results[alg]["absolute_hypervolume"].append(abs_hv)
             sp = compute_spread(archive)
             results[alg]["spread"].append(sp)
 
@@ -1463,6 +1691,7 @@ def run_unit_tests() -> None:
     # For a mixed allocation (e.g., 1.5, meaning one full worker + one half worker):
     #   - 3 hours: full worker cost = 4 * 50 = 200; half worker cost = (4 / 2) * 50 = 100; total = 300.
     if compute_billable_cost(3, 1.5, 50) != 300:
+
         logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (1.5) with 3 hours.")
     else:
         logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (1.5) with 3 hours.")
@@ -1484,13 +1713,21 @@ def run_unit_tests() -> None:
 # =============================================================================
 
 if __name__ == '__main__':
-    run_unit_tests()
-    
-    runs = 1  # Number of independent runs for statistical significance
+    """
+    In the benchmark experiments,we set 
+    the maximum iteration number to be 500, 
+    the number of search agents to be 100, and 
+    the  maximum  archive  size  to be 100.
+    To  obtain  the statistical results, the MOHHO and others are run 10 times.
+    Yüzgeç & Kuşoğlu (2020)
+    """
+    #run_unit_tests()
+    #grid_search()
+    runs = 1 # Number of independent runs for statistical significance
     use_random_instance = False  # Set True for random instances
     num_tasks = 10
-    POP = 10
-    ITER = 1
+    POP = 80
+    ITER = 200
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
@@ -1504,28 +1741,20 @@ if __name__ == '__main__':
     
     means, stds = statistical_analysis(results)
     
-    #plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
-    plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
-    #plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
-    #plot_convergence(results["Generational_Distance"], "Generational Distance")
+    
+    plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
+    plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
+    plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
+    plot_convergence(results["Generational_Distance"], "Generational Distance")
     
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
-    #plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
-    #plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
     #plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
-    
-    logging.info("Starting grid search for PSO population size...")
-    pop_sizes = [10, 20, 30]
-    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
-    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    default_tasks = get_default_tasks()
-    model_for_grid = RCPSPModel(default_tasks, workers, worker_cost)
-    lb_array = np.array([task["min"] for task in default_tasks])
-    ub_array = np.array([task["max"] for task in default_tasks])
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")
