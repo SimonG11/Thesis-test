@@ -545,7 +545,6 @@ def normalized_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]], f
     hv = approximate_hypervolume(archive, reference_point=fixed_ref)
     return (hv / total_volume) * 100.0
 
-
 def absolute_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]],
                                reference_point: np.ndarray,
                                global_lower_bound: np.ndarray,
@@ -561,8 +560,6 @@ def absolute_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]],
     objs = np.array([entry[1] for entry in archive])
     dominated_count = sum(1 for sample in samples if any(np.all(sol <= sample) for sol in objs))
     return (dominated_count / num_samples) * 100
-
-
 
 # =============================================================================
 # ----------------------- Visualization Functions ---------------------------
@@ -676,6 +673,7 @@ def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[
 # =============================================================================
 # ----------------------- Algorithm Implementations -------------------------
 # =============================================================================
+# --------------------------- MOHHO Algorithm -------------------------
 def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
                         search_agents_no: int, max_iter: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
@@ -792,7 +790,7 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
         t += 1
     return archive, progress
 
-
+# --------------------------- MOPSO Algorithm -------------------------
 class PSO:
     """
     Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) for RCPSP with several enhancements.
@@ -983,28 +981,50 @@ class PSO:
             best_ms = min(p['obj'][0] for p in self.swarm)
             convergence.append(best_ms)
         return convergence
-    
 
-
+# --------------------------- MOACO Algorithm -------------------------
 def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
-                    tasks: List[Dict[str, Any]], 
-                    lb: np.ndarray, ub: np.ndarray, 
-                    ant_count: int, max_iter: int,
-                    alpha: float = 1.0,
-                    beta: float = 2.0,
-                    evaporation_rate: float = 0.1,
-                    w1: float = 1.0,
-                    lambda3: float = 2.0,
-                    colony_count: int = 10,
-                    heuristic_obj: Optional[Callable[[Dict[str, Any], float, int], List[float]]] = None
-                   ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
+                   tasks: List[Dict[str, Any]], 
+                   lb: np.ndarray, ub: np.ndarray, 
+                   ant_count: int, max_iter: int,
+                   alpha: float = 1.0,
+                   beta: float = 2.0,
+                   evaporation_rate: float = 0.1,
+                   w1: float = 1.0,
+                   lambda3: float = 2.0,
+                   colony_count: int = 10,
+                  ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
-    Updated MOACO algorithm with improvements to remove bias toward makespan.
-    This version uses Tchebycheff scalarization for heuristic ranking and Pareto-based candidate selection
-    during local search.
-    """
+    MOACO_improved implements a multi-objective Ant Colony Optimization for RCPSP with several enhancements.
 
-        # ---------------- Helper Functions ----------------
+    Base algorithm concept from Distributed Optimization by Ant Colonies
+    https://www.researchgate.net/publication/216300484_Distributed_Optimization_by_Ant_Colonies
+
+    This version employs:
+      1. Tchebycheff Scalarization for Heuristic Ranking:
+         - For each task, candidate solutions are evaluated using Tchebycheff scalarization,
+           ensuring balanced consideration of all objectives (https://doi.org/10.48550/arXiv.2402.19078).
+         - This technique is standard in multi-objective optimization (see Deb et al., 2002:
+           "Multi-Objective Optimization Using Evolutionary Algorithms" https://doi.org/10.1109/4235.996017).
+
+      2. Pareto-Based Candidate Selection during Local Search:
+         - Instead of aggregating normalized objectives (which can introduce bias), candidates are
+           ranked using fast non-dominated sorting and crowding distance.
+         - This approach follows the NSGA-II methodology (Deb et al., 2002) and related indicator-based methods 
+           (e.g., Zitzler & Künzli, 2004).
+
+      3. Adaptive Pheromone Evaporation and Multi-Colony Pheromone Update:
+         - The evaporation rate is adjusted based on pheromone variance to prevent premature convergence.
+         - Multi-colony updates are applied to encourage diverse search (Angus & Woodward, 2009,
+           https://doi.org/10.1007/s11721-008-0022-4) and adaptive evaporation is inspired by Zhao et al. (2018,
+           https://doi.org/10.3390/sym10040104).
+
+      4. Archive Management using Crowding Distance:
+         - Archive updates use a NSGA-II inspired crowding distance mechanism (Deb et al., 2002) to
+           maintain solution diversity.
+           
+    """
+    # ---------------- Helper Functions ----------------
     def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Min–max scales each column of 'mat' to the [0,1] interval."""
         mat = np.array(mat, dtype=float)
@@ -1019,6 +1039,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
     def normalized_crowding_distance(archive):
         """
         Compute the crowding distance for each solution in the archive using normalized objectives.
+        This function is inspired by the crowding distance mechanism in NSGA-II (Deb et al., 2002).
         """
         if not archive:
             return np.array([])
@@ -1041,6 +1062,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
         """
         Perform fast non-dominated sorting on candidate objective vectors.
         Returns a list of ranks (lower is better).
+        Based on the sorting procedure used in NSGA-II (Deb et al., 2002).
         """
         n = len(candidates)
         S = [[] for _ in range(n)]
@@ -1074,6 +1096,11 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
 
     # --- Helper: Compute heuristic for each task using Tchebycheff scalarization ---
     def compute_task_heuristic(task_index: int) -> Dict[float, float]:
+        """
+        For the task at index 'task_index', compute heuristic values for each possible allocation
+        using Tchebycheff scalarization. This balances the influence of all objectives.
+        Reference: Deb et al. (2002).
+        """
         possible_values = list(np.arange(lb[task_index], ub[task_index] + 0.5, 0.5))
         candidate_objs = []
         for v in possible_values:
@@ -1083,7 +1110,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
         candidate_objs = np.array(candidate_objs)
         # Compute the ideal point (componentwise minimum)
         ideal = np.min(candidate_objs, axis=0)
-        # Compute Tchebycheff values with equal weights
+        # Compute Tchebycheff values with equal weights (balanced contribution)
         tcheby_vals = [max(abs(candidate_objs[j] - ideal)) for j in range(len(possible_values))]
         task_heuristic = {v: 1.0 / (tcheby_vals[j] + 1e-6) for j, v in enumerate(possible_values)}
         return task_heuristic
@@ -1107,11 +1134,15 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
     ants_per_colony = ant_count // colony_count
     best_global = float('inf')
     no_improvement_count = 0
-    stagnation_threshold = 10  # iterations before triggering reinitialization
+    stagnation_threshold = 10  # iterations before triggering reinitialization (diversity injection)
     eps = 1e-6
 
     # --- Helper: Pareto-based candidate selection ---
     def select_best_candidate(candidates: List[np.ndarray], cand_objs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Select the best candidate based on Pareto dominance and crowding distance.
+        This selection mechanism uses fast non-dominated sorting and is inspired by the NSGA-II approach (Deb et al., 2002).
+        """
         ranks = fast_non_dominated_sort(cand_objs.tolist())
         first_front_indices = [i for i, rank in enumerate(ranks) if rank == 1]
         if len(first_front_indices) == 1:
@@ -1185,6 +1216,8 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 all_values.extend(list(pheromone[i].values()))
             all_values = np.array(all_values)
             var_pheromone = np.var(all_values)
+            # Adaptive evaporation based on variance (prevents premature convergence)
+            # Reference: Zhao et al. (2018)
             current_evap_rate = evaporation_rate * 1.5 if var_pheromone < 0.001 else evaporation_rate
             for i in range(dim):
                 for v in pheromone[i]:
@@ -1200,7 +1233,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             for colony_idx in range(colony_count):
                 for i, v in enumerate(sol):
                     colony_pheromones[colony_idx][i][v] += deposit
-        # --- Multi-Colony Reinitialization and Merge ---
+        # --- Multi-Colony Pheromone Reinitialization and Merge ---
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             all_values = []
@@ -1244,7 +1277,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     archive = update_archive_with_crowding(archive, (np.array(new_solution), objf(np.array(new_solution))))
             no_improvement_count = 0
     return archive, progress
-
 
 # =============================================================================
 # ------------------------- Grid search -------------------------------
@@ -1525,7 +1557,6 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
         logging.warning("Not enough data for ANOVA.")
     return means, stds
 
-
 # =============================================================================
 # ------------------------- Automated Unit Testing --------------------------
 # =============================================================================
@@ -1707,7 +1738,6 @@ def run_unit_tests() -> None:
     else:
         logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (2.5) with 13 hours.")
 
-
 # =============================================================================
 # ------------------------- Main Comparison ----------------------------------
 # =============================================================================
@@ -1723,11 +1753,11 @@ if __name__ == '__main__':
     """
     #run_unit_tests()
     #grid_search()
-    runs = 1 # Number of independent runs for statistical significance
+    runs = 10 # Number of independent runs for statistical significance
     use_random_instance = False  # Set True for random instances
     num_tasks = 10
-    POP = 80
-    ITER = 200
+    POP = 10
+    ITER = 50
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
