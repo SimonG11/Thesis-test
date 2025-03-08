@@ -59,9 +59,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         convergence_curves["MOHHO"].append(conv_hho)
         logging.info(f"MOHHO Done")
         logging.info(f"Initializing MOPSO run {run+1}...")
-        objectives = [lambda x: objective_makespan(x, model),
-                      lambda x: objective_total_cost(x, model),
-                      lambda x: objective_neg_utilization(x, model)]
+        objectives = [lambda x: multi_objective(x, model)]
         optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
                         pop=population, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
@@ -78,9 +76,11 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         ant_count = population
         moaco_iter = iterrations
         start_time = time.time()
-        archive_moaco, conv_moaco = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
-                                                   lb_current, ub_current, ant_count, moaco_iter,
-                                                   alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
+        archive_moaco, conv_moaco = MOACO_improved(
+            lambda x: multi_objective(x, model),
+            model.tasks, lb_current, ub_current, ant_count, moaco_iter,
+            alpha=1.0, beta=2.0, evaporation_rate=0.1,
+            colony_count= (ant_count//2))
         results["MOACO"]["runtimes"].append(time.time() - start_time)
         best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
         results["MOACO"]["best_makespan"].append(best_ms_moaco)
@@ -160,9 +160,7 @@ def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, m
     for pop in pop_sizes:
         best_makespans = []
         for _ in range(runs_per_config):
-            objectives = [lambda x: objective_makespan(x, model),
-                          lambda x: objective_total_cost(x, model),
-                          lambda x: objective_neg_utilization(x, model)]
+            objectives = [lambda x: multi_objective(x, model)]
             optimizer = PSO(dim=dim, lb=lb, ub=ub, obj_funcs=objectives,
                             pop=pop, c2=1.05, w_max=0.9, w_min=0.4,
                             disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)

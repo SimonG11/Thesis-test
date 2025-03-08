@@ -3,12 +3,13 @@ import numpy as np
 from typing import List
 from rcpsp_model import RCPSPModel
 import utils
+from utils import round_half
 
 
 def objective_makespan(x: np.ndarray, model: RCPSPModel) -> float:
     """Objective 1: Minimize project makespan."""
-    _, ms = model.compute_schedule(x)
-    return ms
+    schedule, ms = model.compute_schedule(x)
+    return schedule, ms
 
 
 def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
@@ -29,7 +30,7 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
     return total_cost
 
 
-def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
+def objective_neg_utilization(x: np.ndarray, model: RCPSPModel, schedule, makespan) -> float:
     """
     Objective 3: Maximize average resource utilization.
     (Negated so that all objectives are minimized.)
@@ -43,7 +44,6 @@ def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
     
     Finally, we return the negative mean utilization over all tasks.
     """
-    schedule, makespan = model.compute_schedule(x)
     time_points = list(np.arange(0, makespan - 0.25, 0.25))
     resource_pool = model.workers
     ru = {}
@@ -61,6 +61,24 @@ def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
         total_ru += total_rut / len(rut.keys())
     average_ru = total_ru / len(time_points)
     return -average_ru
+
+
+def objective_nega_utilization(x: np.ndarray, model: RCPSPModel) -> float:
+    """
+    Objective 3: Maximize average resource utilization.
+    
+    (Negated so that all objectives are minimized.)
+    """
+    utils = []
+    for task in model.tasks:
+        tid = task["id"]
+        resource_type = task["resource"]
+        capacity = model.workers[resource_type]
+        effective_max = min(task["max"], capacity)
+        alloc = round_half(x[tid - 1])  # Use round_half for half-step allocation.
+        alloc = max(task["min"], min(effective_max, alloc))
+        utils.append(alloc / task["max"])
+    return -np.mean(utils)
 
 
 def objective_negs_utilization(x: np.ndarray, model: 'RCPSPModel') -> float:
@@ -118,8 +136,9 @@ def multi_objective(x: np.ndarray, model: RCPSPModel) -> np.ndarray:
     """
     Return the multi-objective vector for a given allocation vector x.
     """
+    schedule, makespan = objective_makespan(x, model)
     return np.array([
-        objective_makespan(x, model),
+        makespan,
         objective_total_cost(x, model),
-        objective_neg_utilization(x, model)
+        objective_neg_utilization(x, model, schedule, makespan)
     ])
