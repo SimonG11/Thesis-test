@@ -1,7 +1,7 @@
 # utils.py
 import numpy as np
 import random, math
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 def initialize_seed(seed: int = 42) -> None:
@@ -17,9 +17,11 @@ def round_half(x: float) -> float:
     """
     return round(x * 2) / 2.0
 
+
 def clip_round_half(x: float, lb: float, ub: float) -> float:
     """Clip a value between lb and ub and round it to the nearest half step."""
     return round_half(np.clip(x, lb, ub))
+
 
 def discretize_vector(vec: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> np.ndarray:
     """Discretize each element of a vector to half steps within given bounds."""
@@ -172,7 +174,111 @@ def compute_extremes(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     return new_extremes
 
 
-def convertDurationtodays(duration):
+def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
+    """
+    Compute a fixed reference point based on the union of all solution archives.
+    """
+    union_archive = []
+    for alg in archives_all:
+        for archive in archives_all[alg]:
+            union_archive.extend(archive)
+    if not union_archive:
+        raise ValueError("No archive entries found.")
+    objs = np.array([entry[1] for entry in union_archive])
+    ref_point = np.max(objs, axis=0)
+    return ref_point
+
+
+def compute_combined_ideal(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
+    """
+    Compute the combined ideal point from multiple archives.
+    """
+    union_archive = []
+    for alg in archives_all:
+        for archive in archives_all[alg]:
+            union_archive.extend(archive)
+    if not union_archive:
+        raise ValueError("No archive entries found.")
+    objs = np.array([entry[1] for entry in union_archive])
+    ideal = np.min(objs, axis=0)
+    return ideal
+
+
+def same_entry(entry1: Tuple[np.ndarray, np.ndarray], entry2: Tuple[np.ndarray, np.ndarray]) -> bool:
+    """Return True if two archive entries are identical."""
+    return np.array_equal(entry1[0], entry2[0]) and np.array_equal(entry1[1], entry2[1])
+
+
+def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
+    """
+    Compute the crowding distance for each solution in the archive.
+    """
+    if not archive:
+        return np.array([])
+    objs = np.array([entry[1] for entry in archive])
+    num_objs = objs.shape[1]
+    distances = np.zeros(len(archive))
+    for m in range(num_objs):
+        sorted_indices = np.argsort(objs[:, m])
+        distances[sorted_indices[0]] = distances[sorted_indices[-1]] = float('inf')
+        m_values = objs[sorted_indices, m]
+        m_range = m_values[-1] - m_values[0]
+        if m_range == 0:
+            continue
+        for i in range(1, len(archive) - 1):
+            distances[sorted_indices[i]] += (m_values[i+1] - m_values[i-1]) / m_range
+    return distances
+
+
+def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
+                                 new_entry: Tuple[np.ndarray, np.ndarray],
+                                 max_archive_size: int = 50,
+                                 epsilon: float = 1e-6) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """
+    Update the non-dominated archive with a new entry while preserving diversity.
+    """
+    sol_new, obj_new = new_entry
+    dominated_flag = False
+    removal_list = []
+    for (sol_arch, obj_arch) in archive:
+        if dominates(obj_arch, obj_new, epsilon):
+            dominated_flag = True
+            break
+        if dominates(obj_new, obj_arch, epsilon):
+            removal_list.append((sol_arch, obj_arch))
+    if not dominated_flag:
+        archive = [entry for entry in archive if not any(same_entry(entry, rem) for rem in removal_list)]
+        archive.append(new_entry)
+        if len(archive) > max_archive_size:
+            distances = compute_crowding_distance(archive)
+            min_index = np.argmin(distances)
+            archive.pop(min_index)
+    return archive
+
+
+def get_global_non_dominated(solutions: List[Tuple[int, np.ndarray, np.ndarray]], 
+                             epsilon: float = 1e-6) -> List[Tuple[int, np.ndarray, np.ndarray]]:
+    """
+    Given a list of solutions tagged with an algorithm index, return only the non-dominated ones.
+    
+    Each solution is a tuple (alg_index, decision_vector, objective_vector).
+    The function loops over every pair and marks a solution as dominated if any other solution dominates it.
+    
+    Returns a list of solutions that are non-dominated globally.
+    """
+    n = len(solutions)
+    dominated = [False] * n
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                # Compare the objective vectors.
+                if dominates(solutions[j][2], solutions[i][2], epsilon):
+                    dominated[i] = True
+                    break
+    return [solutions[i] for i in range(n) if not dominated[i]]
+
+
+def convertDurationtodays(duration: float) -> float:
     days = 0 
     while duration >= 0:
         if duration > 4:
@@ -184,7 +290,7 @@ def convertDurationtodays(duration):
     return days
 
 
-def convertDurationtodaysCost(duration, alloc):
+def convertDurationtodaysCost(duration: float, alloc: float) -> float:
     ActualAcualEffort = 0
     if int(alloc) == alloc:    
         while duration >= 0:
@@ -212,3 +318,4 @@ def convertDurationtodaysCost(duration, alloc):
         if (halfduration % 4) != 0:
             ActualAcualEffort += 4
         return ActualAcualEffort
+

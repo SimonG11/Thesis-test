@@ -24,7 +24,7 @@ class RCPSPModel:
             resource_type = task["resource"]
             capacity = self.workers[resource_type]
             effective_max = min(task["max"], capacity)
-            alloc = int(round(x[tid - 1]))
+            alloc = round(x[tid - 1])
             alloc = max(task["min"], min(effective_max, alloc))
             new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
             duration = new_effort / alloc

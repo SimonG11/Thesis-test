@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List, Tuple, Optional,Dict
-from utils import get_true_pareto_points
+from utils import get_true_pareto_points, get_global_non_dominated
 
 
 def fit_quadratic_surface_to_points(points: np.ndarray) -> Tuple[float, float, float, float, float, float]:
@@ -30,6 +30,7 @@ def fit_quadratic_surface_to_points(points: np.ndarray) -> Tuple[float, float, f
     # Solve the least-squares problem.
     coeffs, residuals, rank, s = np.linalg.lstsq(A, -Z, rcond=None)
     return tuple(coeffs)
+
 
 def plot_quadratic_surface(quad_coeffs: Tuple[float, float, float, float, float, float],
                            x_limits: Tuple[float, float],
@@ -203,13 +204,6 @@ def plot_pareto_3d_combined(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     
     # Generate grid from provided x_limits and y_limits.
     plot_quadratic_surface(plane_coeffs, x_limits, y_limits, ax)
-    #x_min, x_max = x_limits
-    #y_min, y_max = y_limits
-    #x_grid, y_grid = np.meshgrid(np.linspace(x_min, x_max, 20),
-    #                             np.linspace(y_min, y_max, 20))
-    #a, b, c = plane_coeffs
-    #z_grid = a * x_grid + b * y_grid + c
-    #ax.plot_surface(x_grid, y_grid, -z_grid, color='red', alpha=0.3)
     
     # Plot fixed reference point.
     if fixed_ref is not None:
@@ -266,12 +260,13 @@ def plot_all_pareto_graphs(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     # Use the specified percentile (e.g., 95th) of the positive errors.
     delta = 0.01
     # Subtract this delta from f to lower the entire surface.
-    f_adjusted = f - delta
+    f_adjusted = f + delta
     plane_coeffs = (a, b, c, d, e, f_adjusted)
     
     # Plot the combined graph.
     print("Plotting combined Pareto front...")
     plot_pareto_3d_combined(archives, labels, markers, colors, plane_coeffs, x_limits, y_limits, fixed_ref)
+    plot_non_dominated_archives_3d(archives, labels, markers, colors, plane_coeffs, x_limits, y_limits, fixed_ref)
     
     # Plot each algorithm individually.
     for archive, label, marker, color in zip(archives, labels, markers, colors):
@@ -312,3 +307,90 @@ def plot_aggregate_convergence(convergence_data: Dict[str, List[List[float]]], t
     plt.show()
 
 
+def plot_non_dominated_archives_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
+                                   labels: List[str],
+                                   markers: List[str],
+                                   colors: List[str],
+                                   plane_coeffs: Tuple[float, float, float],
+                                   x_limits: Tuple[float, float],
+                                   y_limits: Tuple[float, float],
+                                   fixed_ref: Optional[np.ndarray] = None) -> None:
+    """
+    Plot a 3D Pareto front graph showing only the global non-dominated solutions (from the union of all archives).
+    
+    The function does the following:
+      1. Combines all archives (each archive is a list of (decision_vector, objective_vector) tuples)
+         and tags each solution with its algorithm index.
+      2. Removes any solution that is dominated by any other across all archives.
+      3. Groups the non-dominated solutions by algorithm.
+      4. Creates a 3D scatter plot using all three objectives:
+            - x-axis: first objective (e.g., makespan)
+            - y-axis: second objective (e.g., total cost)
+            - z-axis: third objective (e.g., resource utilization), here plotted as -z 
+              if you want lower resource utilization to appear higher.
+      5. Overlays a fitted surface (using the provided plane_coeffs) that is generated
+         over the given x_limits and y_limits.
+      6. Plots a fixed reference point (if provided).
+      7. Annotates each algorithm’s contribution (the count of its non-dominated solutions) in the legend.
+    
+    Parameters:
+      - archives: List of archives; each archive is a list of (decision_vector, objective_vector) tuples.
+      - labels: Labels for each algorithm.
+      - markers: Marker styles for each algorithm (e.g., 'o', '^', 's').
+      - colors: Colors for each algorithm.
+      - plane_coeffs: Coefficients (a, b, c) for a fitted plane (or surface) of the form z = a*x + b*y + c.
+      - x_limits: Tuple (x_min, x_max) defining the x-axis range for the fitted surface.
+      - y_limits: Tuple (y_min, y_max) defining the y-axis range for the fitted surface.
+      - fixed_ref: Optional fixed reference point as a 3-element array.
+    """
+    # 1. Combine all solutions with algorithm indices.
+    combined = []
+    for alg_idx, archive in enumerate(archives):
+        for sol in archive:
+            # Each sol is (decision_vector, objective_vector)
+            combined.append((alg_idx, sol[0], sol[1]))
+    
+    # 2. Compute global non-dominated solutions.
+    global_nd = get_global_non_dominated(combined)
+    
+    # 3. Group solutions by originating algorithm.
+    groups = {i: [] for i in range(len(archives))}
+    for alg_idx, decision, obj in global_nd:
+        groups[alg_idx].append((decision, obj))
+    
+    # 4. Create a 3D scatter plot.
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    for i in range(len(archives)):
+        group = groups[i]
+        if not group:
+            continue
+        # For each solution, use all three objective values.
+        # We assume that the objective_vector is [makespan, total cost, resource utilization].
+        # If lower resource utilization is better, and you want to visualize it inverted,
+        # we plot - (resource utilization) on the z-axis.
+        objs = np.array([entry[1] for entry in group])
+        x = objs[:, 0]  # e.g., makespan
+        y = objs[:, 1]  # e.g., total cost
+        z = -objs[:, 2] # invert resource utilization so that lower becomes higher
+        ax.scatter(x, y, z, marker=markers[i], color=colors[i], s=80, 
+                   label=f"{labels[i]} (n={len(group)})")
+    
+    # 5. Plot the fitted surface.
+    # Generate a grid over x_limits and y_limits.
+    plot_quadratic_surface(plane_coeffs, x_limits, y_limits, ax)
+    
+    # 6. Plot the fixed reference point if provided.
+    if fixed_ref is not None:
+        # Assume fixed_ref is a 3-element array [x, y, z]; plot z as negative.
+        ax.scatter([fixed_ref[0]], [fixed_ref[1]], [-fixed_ref[2]], c='black', marker='x', s=100, label='Fixed Reference')
+    
+    # 7. Label axes and add title/legend.
+    ax.set_xlabel("Makespan (hours)")
+    ax.set_ylabel("Total Cost")
+    ax.set_zlabel("Resource Utilization (inverted)")
+    ax.set_title("Global Non-Dominated 3D Pareto Front by Algorithm")
+    ax.legend(loc="best")
+    plt.grid(True)
+    plt.show()

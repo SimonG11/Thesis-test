@@ -2,9 +2,9 @@
 import numpy as np
 import random, math
 from typing import List, Tuple, Callable, Optional, Dict, Any
-from utils import chaotic_map_initialization, levy, dominates, round_half, clip_round_half, discretize_vector
-from metrics import update_archive_with_crowding, compute_crowding_distance
+from utils import chaotic_map_initialization, levy, dominates, round_half, clip_round_half, discretize_vector, update_archive_with_crowding, compute_crowding_distance
 from objectives import multi_objective
+import metrics
 
 
 # =============================================================================
@@ -318,6 +318,7 @@ class PSO:
             convergence.append(best_ms)
         return convergence
 
+
 def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                     tasks: List[Dict[str, Any]], workers: Dict[str, int],
                     lb: np.ndarray, ub: np.ndarray, ant_count: int, max_iter: int,
@@ -394,6 +395,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
     eps = 1e-6
 
     for iteration in range(max_iter):
+        print(len(archive))
         colony_solutions = []
         # --- Solution Construction and Extended Local Search ---
         for colony_idx in range(colony_count):
@@ -513,7 +515,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             colony_pheromones[colony_idx] = [merged_pheromone[i].copy() for i in range(dim)]
         
         # --- Progress Update & Diversity Injection ---
-        current_best = min(obj_val[0] for _, obj_val in colony_solutions)
+        current_best = metrics.compute_average_distance_to_ideal(colony_solutions, (0,0,-1))
         progress.append(current_best)
         if current_best < best_global:
             best_global = current_best

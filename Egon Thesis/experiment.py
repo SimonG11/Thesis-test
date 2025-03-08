@@ -5,14 +5,14 @@ from typing import Dict, List, Tuple, Any
 from rcpsp_model import RCPSPModel
 from tasks import get_default_tasks, generate_random_tasks
 from algorithms import MOHHO_with_progress, PSO, MOACO_improved
-from metrics import (compute_fixed_reference, compute_combined_ideal, 
-                     normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
+from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
                      compute_generational_distance, compute_spread, 
                      compute_spread_3d_by_projections, compute_coverage)
 from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs, plot_comparative_bar_chart, plot_aggregate_convergence
 from scipy.stats import f_oneway
 from objectives import objective_makespan, objective_total_cost, objective_neg_utilization, multi_objective
 import utils
+import time
 
 
 def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10, iterrations: int = 30, population: int = 5
@@ -32,9 +32,9 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     ub_current = np.array([task["max"] for task in model.tasks])
     
     results = {
-        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_pso": [], "coverage_aco": []},
-        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_hho": [], "coverage_aco": []},
-        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_pso": [], "coverage_hho": []},
+        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_pso": [], "coverage_aco": [], "runtimes": []},
+        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_hho": [], "coverage_aco": [], "runtimes": []},
+        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [], "spread": [], "multi_objective_spread": [], "coverage" : [], "coverage_pso": [], "coverage_hho": [], "runtimes": []},
         "Baseline": {"makespan": []}
     }
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
@@ -50,7 +50,9 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         logging.info(f"Initializing MOHHO run {run+1}...")
         hho_iter = iterrations
         search_agents_no = population
+        start_time = time.time()
         archive_hho, conv_hho = MOHHO_with_progress(lambda x: multi_objective(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
+        results["MOHHO"]["runtimes"].append(time.time() - start_time)
         best_ms_hho = min(archive_hho, key=lambda entry: entry[1][0])[1][0] if archive_hho else None
         results["MOHHO"]["best_makespan"].append(best_ms_hho)
         archives_all["MOHHO"].append(archive_hho)
@@ -64,6 +66,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                         pop=population, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
         conv_pso = optimizer.run(max_iter=iterrations)
+        results["PSO"]["runtimes"].append(time.time() - start_time)
         archive_pso = optimizer.archive
         best_ms_pso = min(archive_pso, key=lambda entry: entry[1][0])[1][0] if archive_pso else None
         results["PSO"]["best_makespan"].append(best_ms_pso)
@@ -74,9 +77,11 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         logging.info(f"Initializing MOACO run {run+1}...")
         ant_count = population
         moaco_iter = iterrations
+        start_time = time.time()
         archive_moaco, conv_moaco = MOACO_improved(lambda x: multi_objective(x, model), model.tasks, workers,
                                                    lb_current, ub_current, ant_count, moaco_iter,
                                                    alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0)
+        results["MOACO"]["runtimes"].append(time.time() - start_time)
         best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
         results["MOACO"]["best_makespan"].append(best_ms_moaco)
         results["MOACO"]["coverage"].append(compute_coverage(archive_moaco, archive_hho + archive_pso))
@@ -92,8 +97,8 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         convergence_curves["MOACO"].append(conv_moaco)
         logging.info(f"MOACO Done")
 
-    fixed_ref = compute_fixed_reference(archives_all)
-    global_lower_bound = compute_combined_ideal(archives_all)
+    fixed_ref = utils.compute_fixed_reference(archives_all)
+    global_lower_bound = utils.compute_combined_ideal(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     logging.info(f"Combined ideal (global lower bound): {global_lower_bound}")
     all_archives_total = []
@@ -122,6 +127,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     gd_results = {"MOHHO": [], "PSO": [], "MOACO": []}
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
+            print(alg, len(archive))
             gd = compute_generational_distance(archive, true_pareto) if archive and true_pareto.size > 0 else None
             gd_results[alg].append(gd)
     results["Generational_Distance"] = gd_results
@@ -179,8 +185,8 @@ if __name__ == '__main__':
     runs = 5
     use_random_instance = False
     num_tasks = 10
-    POPULATION = 10
-    ITERATIONS = 30
+    POPULATION = 50
+    ITERATIONS = 100
     tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3}) if use_random_instance else get_default_tasks()
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks, population=POPULATION, iterrations=ITERATIONS)
@@ -193,9 +199,13 @@ if __name__ == '__main__':
     plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Absolute Hypervolume (%)")
     plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
+    plot_convergence({alg: results[alg]["multi_objective_spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Multi objective spread (3D)")
+    plot_convergence({alg: results[alg]["coverage"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Coverage (Algorithm dominates x% of the other algorithms)")
     plot_convergence(results["Generational_Distance"], "Generational Distance")
+    plot_convergence({alg: results[alg]["runtimes"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Runtimes")
+
     
-    fixed_ref = compute_fixed_reference(archives_all)
+    fixed_ref = utils.compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
     plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
