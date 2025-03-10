@@ -29,10 +29,11 @@ def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[
     resource_types = list(workers.keys())
     for i in range(1, num_tasks + 1):
         base_effort = random.randint(50, 150)
-        min_alloc = random.randint(1, 3)
-        max_alloc = random.randint(min_alloc + 1, 15)
-        dependencies = random.sample(range(1, i), random.randint(0, min(3, i - 1))) if i > 1 else []
         resource = random.choice(resource_types)
+        min_alloc = random.randint(1, workers[resource] - 1)
+        max_alloc = random.randint(min_alloc + 1, workers[resource])
+        dependencies = random.sample(range(1, i), random.randint(0, min(3, i - 1))) if i > 1 else []
+        
         tasks_list.append({
             "id": i,
             "task_name": f"Task {i}",
