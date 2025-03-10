@@ -25,6 +25,7 @@ import random, math, time, copy, json, logging
 from typing import List, Tuple, Dict, Any, Callable, Optional
 from mpl_toolkits.mplot3d import Axes3D  # For 3D plotting
 from scipy.stats import f_oneway  # For ANOVA
+from tqdm import tqdm  # For progress bars
 
 # ----------------------------- Logging Setup -----------------------------
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -120,7 +121,6 @@ def find_earliest_start(earliest: float, duration: float, allocated: float,
     last_finish = max(task["finish"] for task in tasks_r)
     return last_finish + epsilon
 
-
 # Named constants for clarity.
 DAY_HOURS_FULL = 8    # Full working day in billable hours.
 DAY_HOURS_HALF = DAY_HOURS_FULL / 2    # Half working day in billable hours.
@@ -128,7 +128,6 @@ DAY_HOURS_HALF = DAY_HOURS_FULL / 2    # Half working day in billable hours.
 def convert_hours_to_billable_days(duration: float) -> float:
     """
     Convert a duration (in hours) to billable days.
-    
     Business Rules:
       - Non-positive durations return 0.0 days.
       - Durations ≤ DAY_HOURS_HALF (4 hours) count as a half day (0.5).
@@ -137,13 +136,6 @@ def convert_hours_to_billable_days(duration: float) -> float:
             Compute full days = duration // DAY_HOURS_FULL.
             Let remainder = duration - (full_days * DAY_HOURS_FULL).
             If remainder is ≤ DAY_HOURS_HALF, add 0.5 day; otherwise, add 1.0 day.
-    
-    Examples:
-      • 1.25 or 4 hours   → 0.5 day
-      • 4.1, 7.9, or 8 hours → 1.0 day
-      • 10 hours           → 1 full day + 0.5 day = 1.5 days
-      • 13 hours           → 1 full day + 1.0 day = 2.0 days
-      • 16 hours           → 2 full days = 2.0 days
     """
     if duration <= 0:
         return 0.0
@@ -160,16 +152,9 @@ def convert_hours_to_billable_days(duration: float) -> float:
 def compute_billable_hours(duration: float) -> float:
     """
     Convert a duration (in hours) to billable hours.
-    
     Billing Conversion:
       - Each full day is billed as DAY_HOURS_FULL hours.
       - Each half day is billed as DAY_HOURS_HALF hours.
-    
-    Examples:
-      • 3 hours → 0.5 day → 4 billable hours.
-      • 4.1 hours → 1.0 day → 8 billable hours.
-      • 10 hours → 1.5 days → 12 billable hours.
-      • 13 hours → 2.0 days → 16 billable hours.
     """
     billable_days = convert_hours_to_billable_days(duration)
     full_days = int(billable_days)
@@ -179,36 +164,6 @@ def compute_billable_hours(duration: float) -> float:
 def compute_billable_cost(duration: float, allocation: float, wage_rate: float) -> float:
     """
     Compute the total labor cost given a task's duration (in hours), worker allocation, and wage rate.
-    
-    Let F be the computed billable hours.
-    For a full worker (allocation = 1): cost = F * wage_rate.
-    
-    For a pure half worker (allocation < 1):
-      - If duration < 2 hours, charge half of the full worker cost.
-      - Otherwise, if F ≤ DAY_HOURS_FULL, charge the full worker cost;
-        if F > DAY_HOURS_FULL, subtract a discount computed as (DAY_HOURS_HALF * wage_rate) / 2.
-    
-    For a mixed allocation (allocation ≥ 1), interpret allocation as:
-      (integer number of full workers) plus a half worker if the fractional part is ≥ 0.5.
-      Then, cost = (number of full workers * full_cost) + (if half worker present, add full_cost/2).
-    
-    Examples (with wage_rate = 50):
-      - Full worker (allocation = 1):
-          • 3 hours: F = 4 → cost = 4 * 50 = 200.
-          • 10 hours: F = 12 → cost = 12 * 50 = 600.
-      - Pure half worker (allocation = 0.5):
-          • 1 hour: F = 4, duration < 2 → cost = (4 * 50) / 2 = 100.
-          • 3 hours: F = 4, duration ≥ 2 → cost = 4 * 50 = 200.
-          • 8 hours: F = 8 → cost = 8 * 50 = 400.
-          • 10 hours: F = 12 → cost = (12 * 50) - ((DAY_HOURS_HALF * 50) / 2)
-                      = 600 - ( (4*50)/2 ) = 600 - 100 = 500.
-          • 18 hours: F = 20 → cost = (20 * 50) - ((DAY_HOURS_HALF * 50) / 2)
-                      = 1000 - 100 = 900.
-      - Mixed allocation (allocation = 1.5):
-          • 3 hours: cost = (1 * 200) + (200/2) = 200 + 100 = 300.
-          • 10 hours: cost = (1 * 600) + (600/2) = 600 + 300 = 900.
-          • For allocation = 2.5 and 13 hours (F = 16, wage_rate = 40):
-              cost = (2 * 16 * 40) + (16 * 40)/2 = 1280 + 320 = 1600.
     """
     F = compute_billable_hours(duration)
     full_cost = F * wage_rate
@@ -220,7 +175,6 @@ def compute_billable_cost(duration: float, allocation: float, wage_rate: float) 
             if F <= DAY_HOURS_FULL:
                 return full_cost
             else:
-                # Discount computed as half the cost of a half-day.
                 discount = (DAY_HOURS_HALF * wage_rate) / 2
                 return full_cost - discount
     else:
@@ -231,16 +185,12 @@ def compute_billable_cost(duration: float, allocation: float, wage_rate: float) 
         else:
             return full_workers * full_cost
 
-
 # ---------------------------------------------------------------------------
 # Chaotic Initialization using Logistic Map
 # ---------------------------------------------------------------------------
 def chaotic_map_initialization(lb: np.ndarray, ub: np.ndarray, dim: int, n_agents: int) -> np.ndarray:
     """
     Initialize the population using a logistic chaotic map.
-    
-    The logistic map (x_{n+1} = 4*x_n*(1 - x_n) for r=4) generates chaotic sequences,
-    resulting in a diverse distribution of initial solutions.
     """
     r = 4.0
     population = np.zeros((n_agents, dim))
@@ -257,8 +207,6 @@ def chaotic_map_initialization(lb: np.ndarray, ub: np.ndarray, dim: int, n_agent
 def get_default_tasks() -> List[Dict[str, Any]]:
     """
     Return a fixed list of tasks for the RCPSP.
-    
-    This fixed instance supports reproducible experiments and benchmark comparisons.
     """
     return [
         {"id": 1, "task_name": "Requirements Gathering", "base_effort": 80,  "min": 0.5, "max": 14, "dependencies": [],         "resource": "Manager"},
@@ -280,11 +228,6 @@ def get_default_tasks() -> List[Dict[str, Any]]:
 class RCPSPModel:
     """
     A model representing the Resource-Constrained Project Scheduling Problem (RCPSP).
-
-    Attributes:
-        tasks (List[Dict]): List of task definitions.
-        workers (Dict[str, int]): Dictionary specifying available workers per resource type.
-        worker_cost (Dict[str, int]): Dictionary specifying cost per man–hour for each resource.
     """
     def __init__(self, tasks: List[Dict[str, Any]], 
                  workers: Dict[str, int],
@@ -296,13 +239,6 @@ class RCPSPModel:
     def compute_schedule(self, x: np.ndarray) -> Tuple[List[Dict[str, Any]], float]:
         """
         Compute a feasible schedule using a Serial Schedule Generation Scheme (SSGS).
-
-        Given an allocation vector 'x', tasks are scheduled based on their dependencies and resource constraints,
-        ensuring an active schedule (i.e., no task can start earlier without delaying others).
-
-        Returns:
-            schedule: List of tasks with timing details.
-            makespan: Overall finish time of the project.
         """
         schedule = []
         finish_times: Dict[int, float] = {}
@@ -311,11 +247,10 @@ class RCPSPModel:
             resource_type = task["resource"]
             capacity = self.workers[resource_type]
             effective_max = min(task["max"], capacity)
-            # Use half-step rounding for worker allocation.
             alloc = round_half(x[tid - 1])
             alloc = max(task["min"], min(effective_max, alloc))
             if alloc == 0.5:
-                new_effort = task["base_effort"] * 1.2 #Increse effor by 20% if you are only allowed to work 50% with the condition that you work alone
+                new_effort = task["base_effort"] * 1.2
                 duration = new_effort
             else:
                 new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
@@ -341,8 +276,6 @@ class RCPSPModel:
     def baseline_allocation(self) -> Tuple[List[Dict[str, Any]], float]:
         """
         Generate a baseline schedule by assigning the minimum required workers to all tasks.
-        
-        This greedy allocation strategy serves as a baseline for comparison.
         """
         x = np.array([task["min"] for task in self.tasks])
         return self.compute_schedule(x)
@@ -364,7 +297,6 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         resource_type = task["resource"]
         capacity = model.workers[resource_type]
         effective_max = min(task["max"], capacity)
-        # Use the round_half function for consistent half-step allocation.
         alloc = round_half(x[tid - 1])
         alloc = max(task["min"], min(effective_max, alloc))
         new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
@@ -372,13 +304,11 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         wage_rate = model.worker_cost[resource_type]
         task_cost = compute_billable_cost(duration, alloc, wage_rate)
         total_cost += task_cost
-
     return total_cost
 
 def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
     """
     Objective 3: Maximize average resource utilization.
-    
     (Negated so that all objectives are minimized.)
     """
     utils = []
@@ -387,7 +317,7 @@ def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
         resource_type = task["resource"]
         capacity = model.workers[resource_type]
         effective_max = min(task["max"], capacity)
-        alloc = round_half(x[tid - 1])  # Use round_half for half-step allocation.
+        alloc = round_half(x[tid - 1])
         alloc = max(task["min"], min(effective_max, alloc))
         utils.append(alloc / task["max"])
     return -np.mean(utils)
@@ -395,9 +325,6 @@ def objective_neg_utilization(x: np.ndarray, model: RCPSPModel) -> float:
 def multi_objective(x: np.ndarray, model: RCPSPModel) -> np.ndarray:
     """
     Return the multi-objective vector for a given allocation vector x.
-    
-    The vector consists of:
-        [makespan, total cost, -average utilization].
     """
     return np.array([
         objective_makespan(x, model),
@@ -412,13 +339,6 @@ def multi_objective(x: np.ndarray, model: RCPSPModel) -> np.ndarray:
 def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
                             reference_point: np.ndarray,
                             num_samples: int = 100) -> float:
-    """
-    Approximate the hypervolume of the archive via Monte Carlo sampling.
-    
-    Hypervolume measures the volume of the objective space dominated by the Pareto front, relative
-    to a reference point. For minimization problems, the reference point should be chosen such that
-    it is dominated by all solutions.
-    """
     if not archive:
         return 0.0
     objs = np.array([entry[1] for entry in archive])
@@ -429,11 +349,6 @@ def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
     return (count / num_samples) * vol
 
 def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> np.ndarray:
-    """
-    Compute the crowding distance for each solution in the archive.
-    
-    Crowding distance is used to maintain diversity among the non-dominated solutions.
-    """
     if not archive:
         return np.array([])
     objs = np.array([entry[1] for entry in archive])
@@ -452,16 +367,12 @@ def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> n
 
 def same_entry(entry1: Tuple[np.ndarray, np.ndarray],
                entry2: Tuple[np.ndarray, np.ndarray]) -> bool:
-    """Return True if two archive entries are identical (both decision and objective vectors)."""
     return np.array_equal(entry1[0], entry2[0]) and np.array_equal(entry1[1], entry2[1])
 
 def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
                                  new_entry: Tuple[np.ndarray, np.ndarray],
                                  max_archive_size: int = 50,
                                  epsilon: float = 1e-6) -> List[Tuple[np.ndarray, np.ndarray]]:
-    """
-    Update the non-dominated archive with a new entry while preserving diversity.
-    """
     sol_new, obj_new = new_entry
     dominated_flag = False
     removal_list = []
@@ -482,9 +393,6 @@ def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
 
 def compute_generational_distance(archive: List[Tuple[np.ndarray, np.ndarray]],
                                   true_pareto: np.ndarray) -> Optional[float]:
-    """
-    Compute the Generational Distance (GD) between the archive and the true Pareto front.
-    """
     if not archive or true_pareto.size == 0:
         return None
     objs = np.array([entry[1] for entry in archive])
@@ -492,9 +400,6 @@ def compute_generational_distance(archive: List[Tuple[np.ndarray, np.ndarray]],
     return np.mean(distances)
 
 def compute_spread(archive: List[Tuple[np.ndarray, np.ndarray]]) -> float:
-    """
-    Compute the spread (diversity) of the archive as the average pairwise Euclidean distance in objective space.
-    """
     if len(archive) < 2:
         return 0.0
     objs = np.array([entry[1] for entry in archive])
@@ -502,9 +407,6 @@ def compute_spread(archive: List[Tuple[np.ndarray, np.ndarray]]) -> float:
     return np.mean(dists)
 
 def compute_combined_ideal(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
-    """
-    Compute the combined ideal point from multiple archives.
-    """
     union_archive = []
     for alg in archives_all:
         for archive in archives_all[alg]:
@@ -514,13 +416,8 @@ def compute_combined_ideal(archives_all: Dict[str, List[List[Tuple[np.ndarray, n
     objs = np.array([entry[1] for entry in union_archive])
     ideal = np.min(objs, axis=0)
     return ideal
-# ---------------------------------------------------------------------------
-# Fixed Reference Point Calculation for Hypervolume Comparison
-# ---------------------------------------------------------------------------
+
 def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
-    """
-    Compute a fixed reference point based on the union of all solution archives from all algorithms.
-    """
     union_archive = []
     for alg in archives_all:
         for archive in archives_all[alg]:
@@ -532,9 +429,6 @@ def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, 
     return ref_point
 
 def normalized_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]], fixed_ref: np.ndarray) -> float:
-    """
-    Compute the normalized hypervolume as a percentage using a fixed reference point.
-    """
     if not archive:
         return 0.0
     objs = np.array([entry[1] for entry in archive])
@@ -549,9 +443,6 @@ def absolute_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]],
                                reference_point: np.ndarray,
                                global_lower_bound: np.ndarray,
                                num_samples: int = 1000) -> float:
-    """
-    Approximate the absolute hypervolume using a fixed global lower bound.
-    """
     if not archive:
         return 0.0
     lb = global_lower_bound
@@ -566,7 +457,6 @@ def absolute_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]],
 # =============================================================================
 
 def plot_gantt(schedule: List[Dict[str, Any]], title: str) -> None:
-    """Plot a Gantt chart for the given schedule."""
     fig, ax = plt.subplots(figsize=(10, 6))
     yticks, yticklabels = [], []
     for i, task in enumerate(schedule):
@@ -587,9 +477,6 @@ def plot_gantt(schedule: List[Dict[str, Any]], title: str) -> None:
     plt.show()
 
 def plot_convergence(metrics_dict: Dict[str, List[float]], metric_name: str) -> None:
-    """
-    Plot boxplots for a given performance metric across different runs.
-    """
     fig, ax = plt.subplots(figsize=(8, 6))
     data = list(metrics_dict.values())
     ax.boxplot(data, tick_labels=list(metrics_dict.keys()))
@@ -601,9 +488,6 @@ def plot_convergence(metrics_dict: Dict[str, List[float]], metric_name: str) -> 
 def plot_pareto_2d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                    labels: List[str], markers: List[str], colors: List[str],
                    ref_point: Optional[np.ndarray] = None) -> None:
-    """
-    Plot 2D Pareto fronts (Makespan vs. Total Cost) for the provided archives.
-    """
     plt.figure(figsize=(8, 6))
     for archive, label, marker, color in zip(archives, labels, markers, colors):
         if archive:
@@ -622,9 +506,6 @@ def plot_pareto_2d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
 def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
                    labels: List[str], markers: List[str], colors: List[str],
                    ref_point: Optional[np.ndarray] = None) -> None:
-    """
-    Plot 3D Pareto fronts (Makespan, Total Cost, Average Utilization) for the provided archives.
-    """
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111, projection='3d')
     for archive, label, marker, color in zip(archives, labels, markers, colors):
@@ -646,11 +527,6 @@ def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
 # =============================================================================
 
 def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[str, Any]]:
-    """
-    Generate a list of random, acyclic tasks for scalability testing.
-    
-    Each task (indexed from 1) may depend on any subset of tasks 1 to i-1.
-    """
     tasks_list = []
     resource_types = list(workers.keys())
     for i in range(1, num_tasks + 1):
@@ -678,60 +554,58 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
                         search_agents_no: int, max_iter: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
-    Adaptive MOHHO_with_progress implements a Multi-Objective Harris Hawks Optimization
-    for the RCPSP problem with several enhancements to improve convergence and diversity.
-    Decisions are strictly explored in half-step increments.
-
-    Enhancements and Scientific Justifications:
-      1. Chaotic Initialization:
-         - Uses a logistic chaotic map to initialize the population, thereby enhancing the spread
-           and diversity of the initial solutions.
-         - Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-           URL: https://doi.org/10.3390/math7020146
-         - Also inspired by Yan et al. (2022), "An Improved Multi-Objective Harris Hawk Optimization with Blank Angle Region Enhanced Search"
-           URL: https://doi.org/10.3390/sym14050967
-
-      2. Adaptive Step Size Update (Self-adaptation):
-         - Dynamically adjusts the step sizes based on improvements between iterations to balance exploration and exploitation.
-         - Citation: Adaptive tuning in metaheuristics (e.g., Brest et al. (2006))
-           URL: https://doi.org/10.1109/TEVC.2006.872133
-
-      3. Diversity-driven Injection:
-         - Monitors population diversity and, if stagnation is detected (average pairwise distance falls below a threshold),
-           replaces the worst-performing solution with a new one to avoid premature convergence.
-         - Citation: Yüzgeç & Kuşoğlu (2020) propose diversity-driven strategies in multi-objective optimization.
-
-      4. Archive Management via Crowding Distance:
-         - Uses a NSGA-II inspired archive update procedure that leverages crowding distance to maintain a diverse set of non-dominated solutions.
-         - Citation: Deb et al. (2002), "Multi-Objective Optimization Using Evolutionary Algorithms"
-           URL: https://doi.org/10.1109/4235.996017
-
+    Adaptive MOHHO_with_progress implements a Multi-Objective Harris Hawks Optimization.
     Returns:
-        archive: A list of non-dominated solutions (each as a tuple of decision and objective vectors).
-        progress: A list recording the best makespan value (first objective) per iteration.
+        archive: List of non-dominated solutions.
+        progress: List of progress metric values per iteration.
     """
-    # Enhanced initialization using chaotic map
+    def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        mat = np.array(mat, dtype=float)
+        mins = mat.min(axis=0)
+        maxs = mat.max(axis=0)
+        norm = np.zeros_like(mat)
+        for d in range(mat.shape[1]):
+            range_val = maxs[d] - mins[d]
+            norm[:, d] = (mat[:, d] - mins[d]) / range_val if range_val != 0 else 0.5
+        return norm, mins, maxs
+
+    def normalize_obj(obj, mins, maxs):
+        obj = np.array(obj, dtype=float)
+        norm_obj = np.zeros_like(obj)
+        for i in range(len(obj)):
+            range_val = maxs[i] - mins[i]
+            norm_obj[i] = (obj[i] - mins[i]) / range_val if range_val != 0 else 0.5
+        return norm_obj
+
+    # --- Initialization ---
     X = chaotic_map_initialization(lb, ub, dim, search_agents_no)
-    # Initialize self-adaptive step sizes for each hawk and dimension.
     step_sizes = np.ones((search_agents_no, dim))
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
-    t = 0
     diversity_threshold = 0.1 * np.mean(ub - lb)
-    while t < max_iter:
-        # Non-linear decaying escape energy (using cosine schedule)
-        E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
+    
+    # Main iteration loop with progress bar.
+    for t in tqdm(range(max_iter), desc="MOHHO Progress", unit="iter"):
+        # Update archive with current solutions.
         for i in range(search_agents_no):
             X[i, :] = discretize_vector(np.clip(X[i, :], lb, ub), lb, ub)
             f_val = objf(X[i, :])
             archive = update_archive_with_crowding(archive, (X[i, :].copy(), f_val.copy()))
+        
+        pop_objs = [objf(X[i, :]) for i in range(search_agents_no)]
+        pop_objs_mat = np.array(pop_objs)
+        _, pop_mins, pop_maxs = normalize_matrix(pop_objs_mat)
+        
         rabbit = random.choice(archive)[0] if archive else X[0, :].copy()
+        
         for i in range(search_agents_no):
             old_x = X[i, :].copy()
-            old_obj = np.linalg.norm(objf(old_x))
+            old_obj = np.linalg.norm(normalize_obj(objf(old_x), pop_mins, pop_maxs))
             E0 = 2 * random.random() - 1
+            E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
             Escaping_Energy = E1 * E0
             r = random.random()
+            
             if abs(Escaping_Energy) >= 1:
                 q = random.random()
                 rand_index = random.randint(0, search_agents_no - 1)
@@ -749,76 +623,43 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                 elif r < 0.5 and abs(Escaping_Energy) >= 0.5:
                     jump_strength = 2 * (1 - random.random())
                     X1 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - X[i, :])
-                    if np.linalg.norm(objf(X1)) < np.linalg.norm(objf(X[i, :])):
+                    if np.linalg.norm(normalize_obj(objf(X1), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                         X[i, :] = X1.copy()
                     else:
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - X[i, :]) + np.random.randn(dim) * levy(dim)
-                        if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
+                        if np.linalg.norm(normalize_obj(objf(X2), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                             X[i, :] = X2.copy()
                 elif r < 0.5 and abs(Escaping_Energy) < 0.5:
                     jump_strength = 2 * (1 - random.random())
                     X1 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0))
-                    if np.linalg.norm(objf(X1)) < np.linalg.norm(objf(X[i, :])):
+                    if np.linalg.norm(normalize_obj(objf(X1), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                         X[i, :] = X1.copy()
                     else:
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0)) + np.random.randn(dim) * levy(dim)
-                        if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
+                        if np.linalg.norm(normalize_obj(objf(X2), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                             X[i, :] = X2.copy()
+            
             new_x = old_x + step_sizes[i, :] * (X[i, :] - old_x)
             new_x = discretize_vector(np.clip(new_x, lb, ub), lb, ub)
-            new_obj = np.linalg.norm(objf(new_x))
+            new_obj = np.linalg.norm(normalize_obj(objf(new_x), pop_mins, pop_maxs))
             if new_obj < old_obj:
                 step_sizes[i, :] *= 0.95
             else:
                 step_sizes[i, :] *= 1.05
             X[i, :] = new_x.copy()
-        dists = [np.linalg.norm(X[i] - X[j]) for i in range(search_agents_no) for j in range(i+1, search_agents_no)]
-        avg_dist = np.mean(dists) if dists else 0
-        if avg_dist < diversity_threshold:
-            obj_values = [np.linalg.norm(objf(X[i])) for i in range(search_agents_no)]
-            worst_idx = np.argmax(obj_values)
-            if archive:
-                base = random.choice(archive)[0]
-                new_hawk = base + np.random.uniform(-0.5, 0.5, size=dim)
-                X[worst_idx, :] = discretize_vector(new_hawk, lb, ub)
-                step_sizes[worst_idx, :] = np.ones(dim)
-            else:
-                X[worst_idx, :] = discretize_vector(chaotic_map_initialization(lb, ub, dim, 1)[0], lb, ub)
-                step_sizes[worst_idx, :] = np.ones(dim)
-        best_makespan = np.min([objf(X[i, :])[0] for i in range(search_agents_no)])
-        progress.append(best_makespan)
-        t += 1
+        
+        normalized_objs = [normalize_obj(objf(X[i, :]), pop_mins, pop_maxs) for i in range(search_agents_no)]
+        ideal = np.min(np.array(normalized_objs), axis=0)
+        tcheby_values = [max(abs(n_obj - ideal)) for n_obj in normalized_objs]
+        progress_metric = min(tcheby_values)
+        progress.append(progress_metric)
+    
     return archive, progress
 
 # --------------------------- MOPSO Algorithm -------------------------
 class PSO:
     """
-    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) for RCPSP with several enhancements.
-    
-    Enhancements and Scientific Justifications:
-      1. Self-adaptive Inertia Weight Update:
-         - Dynamically adjusts the inertia weight based on performance improvements to balance exploration and exploitation.
-         - Citation: Zhang et al. (2018), Adaptive MOPSO approaches.
-         - URL: https://doi.org/10.1007/s11761-018-0231-7
-
-      2. Periodic Mutation/Disturbance:
-         - Introduces random disturbances (mutation) in the particle positions to prevent premature convergence.
-         - Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-         - URL: https://doi.org/10.3390/math7020146
-
-      3. Archive Update via Crowding Distance:
-         - Maintains an external archive of non-dominated solutions using a NSGA-II style crowding distance measure to preserve diversity.
-         - Citation: Deb et al. (2002), "Multi-Objective Optimization Using Evolutionary Algorithms"
-         - URL: https://doi.org/10.1109/4235.996017
-
-      4. Hypercube-Based Leader Selection:
-         - Divides the objective space into hypercubes and selects leaders based on the inverse density of solutions in each cell,
-           promoting diverse search directions.
-         - Citation: Coello Coello et al. (2004)
-         - URL: https://doi.org/10.1080/03052150410001647966
-
-    This class provides methods to initialize the swarm, update velocities and positions, manage the archive,
-    and run the optimization for a specified number of iterations.
+    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) for RCPSP.
     """
     def __init__(self, dim: int, lb: np.ndarray, ub: np.ndarray,
                  obj_funcs: List[Callable[[np.ndarray], float]], pop: int = 30,
@@ -837,16 +678,16 @@ class PSO:
         self.max_iter = 200
         self.vmax = self.ub - self.lb
         self.swarm: List[Dict[str, Any]] = []
-        # Initialize positions using allowed half-step values.
         for _ in range(pop):
-            pos = np.array([random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5))) for i in range(dim)])
+            pos = np.array([random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5)))
+                            for i in range(dim)])
             vel = np.array([random.uniform(-self.vmax[i], self.vmax[i]) for i in range(dim)])
             particle = {
                 'position': pos,
                 'velocity': vel,
                 'pbest': pos.copy(),
                 'obj': self.evaluate(pos),
-                'w': self.w_max  # Start with maximum inertia weight.
+                'w': self.w_max
             }
             self.swarm.append(particle)
         self.archive: List[Tuple[np.ndarray, np.ndarray]] = []
@@ -855,54 +696,57 @@ class PSO:
         self.jump_interval = jump_interval
 
     def evaluate(self, pos: np.ndarray) -> np.ndarray:
-        """Evaluate a particle's position using the provided objective functions."""
         if len(self.obj_funcs) == 1:
             return np.array([self.obj_funcs[0](pos)])
         else:
             return np.array([f(pos) for f in self.obj_funcs])
-        
-    def select_leader_hypercube(self) -> List[np.ndarray]:
-        """
-        Select leader particles using hypercube division of the archive.
-        """
+    
+    @staticmethod
+    def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        mat = np.array(mat, dtype=float)
+        mins = mat.min(axis=0)
+        maxs = mat.max(axis=0)
+        norm = np.zeros_like(mat)
+        for d in range(mat.shape[1]):
+            range_val = maxs[d] - mins[d]
+            norm[:, d] = (mat[:, d] - mins[d]) / range_val if range_val != 0 else 0.5
+        return norm, mins, maxs
+
+    @staticmethod
+    def normalize_obj(obj, mins, maxs):
+        obj = np.array(obj, dtype=float)
+        norm_obj = np.zeros_like(obj)
+        for i in range(len(obj)):
+            range_val = maxs[i] - mins[i]
+            norm_obj[i] = (obj[i] - mins[i]) / range_val if range_val != 0 else 0.5
+        return norm_obj
+
+    def select_leader_hypercube(self, norm_mins: np.ndarray, norm_maxs: np.ndarray) -> List[np.ndarray]:
         if not self.archive:
             return [random.choice(self.swarm)['position'] for _ in range(self.pop)]
         objs = np.array([entry[1] for entry in self.archive])
+        norm_objs = np.array([self.normalize_obj(obj, norm_mins, norm_maxs) for obj in objs])
         num_bins = 5
-        mins = np.min(objs, axis=0)
-        maxs = np.max(objs, axis=0)
+        mins = np.min(norm_objs, axis=0)
+        maxs = np.max(norm_objs, axis=0)
         ranges = np.where(maxs - mins == 0, 1, maxs - mins)
         cell_indices = []
         cell_counts = {}
-        for entry in self.archive:
-            idx = tuple(((entry[1] - mins) / ranges * num_bins).astype(int))
+        for norm_obj in norm_objs:
+            idx = tuple(((norm_obj - mins) / ranges * num_bins).astype(int))
             idx = tuple(min(x, num_bins - 1) for x in idx)
             cell_indices.append(idx)
             cell_counts[idx] = cell_counts.get(idx, 0) + 1
-        leaders = []
         weights = [1 / cell_counts[cell_indices[i]] for i in range(len(self.archive))]
         total_weight = sum(weights)
         probs = [w / total_weight for w in weights]
+        leaders = []
         for _ in range(self.pop):
             chosen = np.random.choice(len(self.archive), p=probs)
             leaders.append(self.archive[chosen][0])
         return leaders
 
-    def jump_improved_operation(self) -> None:
-        """Perform a jump operation to escape local optima."""
-        if len(self.archive) < 2:
-            return
-        c1, c2 = random.sample(self.archive, 2)
-        a1, a2 = random.uniform(0, 1), random.uniform(0, 1)
-        oc1 = c1[0] + a1 * (c1[0] - c2[0])
-        oc2 = c2[0] + a2 * (c2[0] - c1[0])
-        for oc in [oc1, oc2]:
-            oc = np.array([clip_round_half(val, self.lb[i], self.ub[i]) for i, val in enumerate(oc)])
-            obj_val = self.evaluate(oc)
-            self.archive = update_archive_with_crowding(self.archive, (oc, obj_val))
-
     def disturbance_operation(self, particle: Dict[str, Any]) -> None:
-        """Apply a random disturbance to a particle's position to enhance exploration."""
         rate = self.disturbance_rate_min + (self.disturbance_rate_max - self.disturbance_rate_min) * (self.iteration / self.max_iter)
         if random.random() < rate:
             k = random.randint(1, self.dim)
@@ -919,64 +763,80 @@ class PSO:
             particle['obj'] = self.evaluate(new_pos)
 
     def move(self) -> None:
-        """
-        Update the swarm by moving each particle, applying self-adaptive inertia weight updates,
-        and periodic disturbance operations.
-        """
         self.iteration += 1
-        leaders = self.select_leader_hypercube()
+        raw_objs = np.array([self.evaluate(p['position']) for p in self.swarm])
+        norm_objs, norm_mins, norm_maxs = self.normalize_matrix(raw_objs)
+        ideal = np.min(norm_objs, axis=0)
+        leaders = self.select_leader_hypercube(norm_mins, norm_maxs)
+        
         for idx, particle in enumerate(self.swarm):
             old_pos = particle['position'].copy()
-            old_obj = np.linalg.norm(self.evaluate(old_pos))
+            old_obj_raw = self.evaluate(old_pos)
+            old_norm = self.normalize_obj(old_obj_raw, norm_mins, norm_maxs)
+            old_scalar = np.max(np.abs(old_norm - ideal))
+            
             r2 = random.random()
             guide = leaders[idx]
-            # Standard PSO velocity and position update.
             new_v = particle['w'] * particle['velocity'] + self.c2 * r2 * (guide - particle['position'])
             new_v = np.array([np.clip(new_v[i], -self.vmax[i], self.vmax[i]) for i in range(self.dim)])
             particle['velocity'] = new_v
             new_pos = particle['position'] + new_v
             new_pos = np.array([clip_round_half(new_pos[i], self.lb[i], self.ub[i]) for i in range(self.dim)])
             particle['position'] = new_pos
-            particle['obj'] = self.evaluate(new_pos)
+            new_obj_raw = self.evaluate(new_pos)
+            new_norm = self.normalize_obj(new_obj_raw, norm_mins, norm_maxs)
+            new_scalar = np.max(np.abs(new_norm - ideal))
+            particle['obj'] = new_obj_raw
             particle['pbest'] = new_pos.copy()
-            # Update inertia weight based on performance.
-            new_obj = np.linalg.norm(self.evaluate(new_pos))
-            if new_obj < old_obj:
+            
+            if new_scalar < old_scalar:
                 particle['w'] = max(particle['w'] * 0.95, self.w_min)
             else:
                 particle['w'] = min(particle['w'] * 1.05, self.w_max)
+            
             self.disturbance_operation(particle)
+        
         self.update_archive()
         if self.iteration % self.jump_interval == 0:
             self.jump_improved_operation()
+        
         positions = np.array([p['position'] for p in self.swarm])
         if len(positions) > 1:
-            pairwise_dists = [np.linalg.norm(positions[i] - positions[j]) for i in range(len(positions)) for j in range(i+1, len(positions))]
+            pairwise_dists = [np.linalg.norm(positions[i] - positions[j])
+                              for i in range(len(positions)) for j in range(i+1, len(positions))]
             avg_distance = np.mean(pairwise_dists)
             if avg_distance < 0.1 * np.mean(self.ub - self.lb):
                 idx_to_mutate = random.randint(0, self.pop - 1)
-                self.swarm[idx_to_mutate]['position'] = np.array([random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5))) for i in range(self.dim)])
+                self.swarm[idx_to_mutate]['position'] = np.array(
+                    [random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5)))
+                     for i in range(self.dim)])
                 self.swarm[idx_to_mutate]['obj'] = self.evaluate(self.swarm[idx_to_mutate]['position'])
+        
         self.update_archive()
 
+    def jump_improved_operation(self) -> None:
+        if len(self.archive) < 2:
+            return
+        c1, c2 = random.sample(self.archive, 2)
+        a1, a2 = random.uniform(0, 1), random.uniform(0, 1)
+        oc1 = c1[0] + a1 * (c1[0] - c2[0])
+        oc2 = c2[0] + a2 * (c2[0] - c1[0])
+        for oc in [oc1, oc2]:
+            oc = np.array([clip_round_half(val, self.lb[i], self.ub[i]) for i, val in enumerate(oc)])
+            obj_val = self.evaluate(oc)
+            self.archive = update_archive_with_crowding(self.archive, (oc, obj_val))
+
     def update_archive(self) -> None:
-        """Update the external archive using the current swarm particles."""
         for particle in self.swarm:
             pos = particle['position'].copy()
             obj_val = particle['obj'].copy()
             self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
 
     def run(self, max_iter: Optional[int] = None) -> List[float]:
-        """
-        Run the Adaptive MOPSO for a specified number of iterations.
-        
-        Returns:
-            convergence: A list of the best makespan values recorded per iteration.
-        """
         if max_iter is None:
             max_iter = self.max_iter
         convergence: List[float] = []
-        for _ in range(max_iter):
+        for _ in tqdm(range(max_iter), desc="PSO Progress", unit="iter"):
             self.move()
             best_ms = min(p['obj'][0] for p in self.swarm)
             convergence.append(best_ms)
@@ -1024,7 +884,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
            maintain solution diversity.
            
     """
-    # ---------------- Helper Functions ----------------
     def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Min–max scales each column of 'mat' to the [0,1] interval."""
         mat = np.array(mat, dtype=float)
@@ -1094,13 +953,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             current_front = next_front
         return ranks
 
-    # --- Helper: Compute heuristic for each task using Tchebycheff scalarization ---
     def compute_task_heuristic(task_index: int) -> Dict[float, float]:
-        """
-        For the task at index 'task_index', compute heuristic values for each possible allocation
-        using Tchebycheff scalarization. This balances the influence of all objectives.
-        Reference: Deb et al. (2002).
-        """
         possible_values = list(np.arange(lb[task_index], ub[task_index] + 0.5, 0.5))
         candidate_objs = []
         for v in possible_values:
@@ -1108,17 +961,14 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             candidate[task_index] = v
             candidate_objs.append(objf(candidate))
         candidate_objs = np.array(candidate_objs)
-        # Compute the ideal point (componentwise minimum)
         ideal = np.min(candidate_objs, axis=0)
-        # Compute Tchebycheff values with equal weights (balanced contribution)
         tcheby_vals = [max(abs(candidate_objs[j] - ideal)) for j in range(len(possible_values))]
         task_heuristic = {v: 1.0 / (tcheby_vals[j] + 1e-6) for j, v in enumerate(possible_values)}
         return task_heuristic
 
-    # --- Initialization of pheromones and heuristics for each colony ---
     dim = len(lb)
-    colony_pheromones = []  # One pheromone matrix per colony
-    colony_heuristics = []  # One heuristic matrix per colony
+    colony_pheromones = []
+    colony_heuristics = []
     for colony_idx in range(colony_count):
         pheromone_matrix = []
         heuristic_matrix = []
@@ -1134,21 +984,15 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
     ants_per_colony = ant_count // colony_count
     best_global = float('inf')
     no_improvement_count = 0
-    stagnation_threshold = 10  # iterations before triggering reinitialization (diversity injection)
+    stagnation_threshold = 10
     eps = 1e-6
 
-    # --- Helper: Pareto-based candidate selection ---
     def select_best_candidate(candidates: List[np.ndarray], cand_objs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Select the best candidate based on Pareto dominance and crowding distance.
-        This selection mechanism uses fast non-dominated sorting and is inspired by the NSGA-II approach (Deb et al., 2002).
-        """
         ranks = fast_non_dominated_sort(cand_objs.tolist())
         first_front_indices = [i for i, rank in enumerate(ranks) if rank == 1]
         if len(first_front_indices) == 1:
             best_idx = first_front_indices[0]
         else:
-            # Compute crowding distances for candidates in the first front
             front_objs = np.array([cand_objs[i] for i in first_front_indices])
             cd = np.zeros(len(front_objs))
             num_objs = front_objs.shape[1]
@@ -1164,15 +1008,13 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             best_idx = first_front_indices[best_in_front]
         return candidates[best_idx], cand_objs[best_idx]
 
-    # --- Main Iteration Loop ---
-    for iteration in range(max_iter):
-        colony_solutions = []  # store solutions from all colonies
+    for iteration in tqdm(range(max_iter), desc="MOACO Progress", unit="iter"):
+        colony_solutions = []
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             heuristic = colony_heuristics[colony_idx]
             for _ in range(ants_per_colony):
                 solution = []
-                # Construct solution: for each task, select allocation based on pheromone and heuristic
                 for i in range(dim):
                     possible_values = list(pheromone[i].keys())
                     probs = []
@@ -1194,7 +1036,6 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                             chosen = v
                             break
                     solution.append(chosen)
-                # Local search: perturb each task’s allocation by ±0.5
                 candidates = [solution]
                 for i in range(dim):
                     for delta in [-0.5, 0.5]:
@@ -1205,10 +1046,8 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 cand_objs = np.array([objf(c) for c in candidates], dtype=float)
                 best_candidate, best_obj = select_best_candidate(candidates, cand_objs)
                 colony_solutions.append((best_candidate.tolist(), best_obj.tolist()))
-        # --- Archive update ---
         for sol, obj_val in colony_solutions:
             archive = update_archive_with_crowding(archive, (np.array(sol), np.array(obj_val)))
-        # --- Pheromone Evaporation ---
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             all_values = []
@@ -1216,24 +1055,20 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 all_values.extend(list(pheromone[i].values()))
             all_values = np.array(all_values)
             var_pheromone = np.var(all_values)
-            # Adaptive evaporation based on variance (prevents premature convergence)
-            # Reference: Zhao et al. (2018)
             current_evap_rate = evaporation_rate * 1.5 if var_pheromone < 0.001 else evaporation_rate
             for i in range(dim):
                 for v in pheromone[i]:
                     pheromone[i][v] *= (1 - current_evap_rate)
-        # --- Pheromone Deposit Update ---
-        crowding = normalized_crowding_distance(archive)
-        max_cd = np.max(crowding) if len(crowding) > 0 else 1.0
-        if not np.isfinite(max_cd) or max_cd <= 0:
-            max_cd = 1.0
-        decay_factor = 1.0 - (iteration / max_iter)
         for idx, (sol, obj_val) in enumerate(archive):
+            crowding = normalized_crowding_distance(archive)
+            max_cd = np.max(crowding) if len(crowding) > 0 else 1.0
+            if not np.isfinite(max_cd) or max_cd <= 0:
+                max_cd = 1.0
+            decay_factor = 1.0 - (iteration / max_iter)
             deposit = w1 * lambda3 * (crowding[idx] / (max_cd + eps)) * decay_factor
             for colony_idx in range(colony_count):
                 for i, v in enumerate(sol):
                     colony_pheromones[colony_idx][i][v] += deposit
-        # --- Multi-Colony Pheromone Reinitialization and Merge ---
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
             all_values = []
@@ -1254,17 +1089,14 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             merged_pheromone.append(merged)
         for colony_idx in range(colony_count):
             colony_pheromones[colony_idx] = [merged_pheromone[i].copy() for i in range(dim)]
-        # --- Record Progress ---
         if archive:
             objs = np.array([entry[1] for entry in archive])
             ideal = np.min(objs, axis=0)
-            # Use Tchebycheff scalarization to compute a balanced score
             tcheby_scores = [max(abs(entry[1] - ideal)) for entry in archive]
             current_best = min(tcheby_scores)
         else:
             current_best = float('inf')
         progress.append(current_best)
-        # --- Stagnation Handling ---
         if iteration > 0 and progress[-1] >= progress[-2]:
             no_improvement_count += 1
         else:
@@ -1279,173 +1111,11 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
     return archive, progress
 
 # =============================================================================
-# ------------------------- Grid search -------------------------------
-# =============================================================================
-
-def grid_search():
-    """
-    Grid search over algorithm parameters to tune multi-objective performance.
-    
-    For each algorithm (MOHHO, MOPSO (PSO), MOACO):
-      - Population sizes: 100, 300, 500, 700, 1000
-      - Iteration counts: 300, 500, 750, 1000, 2000
-    Additionally for MOACO:
-      - Colony count as a percentage of the ant population: 5%, 10%, 20%, 30%
-    
-    Each combination is run 5 times (to mitigate stochastic effects).
-    Performance is evaluated using a combination of best makespan, absolute hypervolume,
-    spread (diversity) and generational distance.
-    
-    The results are stored in a JSON file for further analysis.
-    """
-
-    # Define grid search ranges
-    populations = [100]
-    iterations_list = [500]
-    colony_percentages = [40 ,45, 50, 55, 60]  # Only for MOACO, 50% best so far
-    runs = 1  # Independent runs per combination
-
-    # Fixed RCPSP instance (using default tasks)
-    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
-    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    tasks = get_default_tasks()  # Fixed instance for reproducibility
-
-    # Dictionary to store grid search results per algorithm
-    results_grid = {"MOHHO": [], "PSO": [], "MOACO": []}
-
-    # Grid search for each algorithm
-    for algorithm in ["MOACO"]:
-        print("ny algorithm", algorithm)
-        for pop in populations:
-            print("ny pop:", pop)
-            for iters in iterations_list:
-                print("ny iter", iters)
-                if algorithm == "MOACO":
-                    # Loop over colony percentages (as a percentage of ant_count = pop)
-                    for col_pct in colony_percentages:
-                        print("Ny koloni", col_pct)
-                        colony_count = max(1, int(pop * (col_pct / 100)))
-                        metrics = {
-                            "pop": pop,
-                            "iters": iters,
-                            "colony_percentage": col_pct,
-                            "colony_count": colony_count,
-                            "makespan": [],
-                            "hypervolume": [],
-                            "spread": [],
-                            "generational_distance": []
-                        }
-                        for r in range(runs):
-                            print("Ny run", r)
-                            # Create RCPSP model instance
-                            model = RCPSPModel(tasks, workers, worker_cost)
-                            dim = len(model.tasks)
-                            lb_current = np.array([task["min"] for task in tasks])
-                            ub_current = np.array([task["max"] for task in tasks])
-                            
-                            # Run MOACO_improved with current grid parameters.
-                            archive, _ = MOACO_improved(
-                                lambda x: multi_objective(x, model),
-                                tasks, workers, lb_current, ub_current,
-                                ant_count=pop, max_iter=iters,
-                                alpha=1.0, beta=2.0, evaporation_rate=0.1, Q=100.0,
-                                colony_count=colony_count
-                            )
-                            # Extract performance metrics from the archive
-                            if archive:
-                                best_ms = min(entry[1][0] for entry in archive)
-                                # For hypervolume and spread, define fixed reference and global lower bound based on archive.
-                                objs = np.array([entry[1] for entry in archive])
-                                fixed_ref = np.max(objs, axis=0)
-                                global_lower_bound = np.min(objs, axis=0)
-                                hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
-                                spread_val = compute_spread(archive)
-                                gd = compute_generational_distance(archive, objs)
-                            else:
-                                best_ms, hv, spread_val, gd = None, None, None, None
-                            
-                            metrics["makespan"].append(best_ms)
-                            metrics["hypervolume"].append(hv)
-                            metrics["spread"].append(spread_val)
-                            metrics["generational_distance"].append(gd)
-                        
-                        # Compute average metrics over runs
-                        metrics["avg_makespan"] = np.mean([m for m in metrics["makespan"] if m is not None])
-                        metrics["avg_hv"] = np.mean([h for h in metrics["hypervolume"] if h is not None])
-                        metrics["avg_spread"] = np.mean([s for s in metrics["spread"] if s is not None])
-                        metrics["avg_gd"] = np.mean([g for g in metrics["generational_distance"] if g is not None])
-                        results_grid["MOACO"].append(metrics)
-                else:
-                    # For MOHHO and PSO
-                    metrics = {
-                        "pop": pop,
-                        "iters": iters,
-                        "makespan": [],
-                        "hypervolume": [],
-                        "spread": [],
-                        "generational_distance": []
-                    }
-                    for r in range(runs):
-                        model = RCPSPModel(tasks, workers, worker_cost)
-                        dim = len(model.tasks)
-                        lb_current = np.array([task["min"] for task in tasks])
-                        ub_current = np.array([task["max"] for task in tasks])
-                        
-                        if algorithm == "MOHHO":
-                            archive, _ = MOHHO_with_progress(
-                                lambda x: multi_objective(x, model),
-                                lb_current, ub_current, dim, pop, iters
-                            )
-                        elif algorithm == "PSO":
-                            objectives = [
-                                lambda x: objective_makespan(x, model),
-                                lambda x: objective_total_cost(x, model),
-                                lambda x: objective_neg_utilization(x, model)
-                            ]
-                            optimizer = PSO(
-                                dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
-                                pop=pop, c2=1.05, w_max=0.9, w_min=0.4,
-                                disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20
-                            )
-                            _ = optimizer.run(max_iter=iters)
-                            archive = optimizer.archive
-                        
-                        if archive:
-                            best_ms = min(entry[1][0] for entry in archive)
-                            objs = np.array([entry[1] for entry in archive])
-                            fixed_ref = np.max(objs, axis=0)
-                            global_lower_bound = np.min(objs, axis=0)
-                            hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
-                            spread_val = compute_spread(archive)
-                            gd = compute_generational_distance(archive, objs)
-                        else:
-                            best_ms, hv, spread_val, gd = None, None, None, None
-
-                        metrics["makespan"].append(best_ms)
-                        metrics["hypervolume"].append(hv)
-                        metrics["spread"].append(spread_val)
-                        metrics["generational_distance"].append(gd)
-                    
-                    metrics["avg_makespan"] = np.mean([m for m in metrics["makespan"] if m is not None])
-                    metrics["avg_hv"] = np.mean([h for h in metrics["hypervolume"] if h is not None])
-                    metrics["avg_spread"] = np.mean([s for s in metrics["spread"] if s is not None])
-                    metrics["avg_gd"] = np.mean([g for g in metrics["generational_distance"] if g is not None])
-                    results_grid[algorithm].append(metrics)
-    
-    # Save the grid search results to a JSON file for further analysis.
-    with open("grid_search_results.json", "w") as f:
-        json.dump(results_grid, f, indent=4)
-    print("Grid search complete. Results saved to grid_search_results.json.")
-
-# =============================================================================
 # ------------------------- Experiment Runner -------------------------------
 # =============================================================================
 
 def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10
                    ) -> Tuple[Dict[str, Any], Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]], List[Dict[str, Any]]]:
-    """
-    Run multiple independent experiments for Adaptive MOHHO, Adaptive MOPSO, Improved MOACO, and Baseline.
-    """
     workers = {"Developer": 10, "Manager": 2, "Tester": 3}
     worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
 
@@ -1468,7 +1138,7 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
     base_schedules = []
 
-    for run in range(runs):
+    for run in tqdm(range(runs), desc="Experiment Runs", unit="run"):
         logging.info(f"Run {run+1}/{runs}...")
         base_schedule, base_ms = model.baseline_allocation()
         results["Baseline"]["makespan"].append(base_ms)
@@ -1499,7 +1169,8 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
             lambda x: multi_objective(x, model),
             model.tasks, lb_current, ub_current, ant_count, moaco_iter,
             alpha=1.0, beta=2.0, evaporation_rate=0.1,
-            colony_count= (ant_count//2))
+            colony_count=(ant_count//2)
+        )
 
         best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
         results["MOACO"]["best_makespan"].append(best_ms_moaco)
@@ -1537,9 +1208,6 @@ def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False,
 # =============================================================================
 
 def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
-    """
-    Compute the mean, standard deviation, and perform one-way ANOVA on best makespan values.
-    """
     algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
     means, stds, data = {}, {}, {}
     data["Baseline"] = results["Baseline"]["makespan"]
@@ -1558,206 +1226,18 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
     return means, stds
 
 # =============================================================================
-# ------------------------- Automated Unit Testing --------------------------
-# =============================================================================
-
-def run_unit_tests() -> None:
-    """
-    Run basic unit tests:
-      1. Test that update_archive_with_crowding produces a non-dominated archive.
-      2. Test that RCPSPModel.compute_schedule returns a feasible schedule.
-    """
-    sol1 = np.array([1, 2, 3])
-    obj1 = np.array([10, 20, 30])
-    sol2 = np.array([2, 3, 4])
-    obj2 = np.array([12, 22, 32])
-    archive = []
-    archive = update_archive_with_crowding(archive, (sol1, obj1))
-    archive = update_archive_with_crowding(archive, (sol2, obj2))
-    if len(archive) != 1:
-        logging.error("Unit Test Failed: Archive contains dominated solutions.")
-    else:
-        logging.info("Unit Test Passed: Archive update produces non-dominated set.")
-
-    workers = {"Developer": 5, "Manager": 2, "Tester": 3}
-    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    tasks = get_default_tasks()
-    model = RCPSPModel(tasks, workers, worker_cost)
-    x = np.array([task["min"] for task in tasks])
-    schedule, ms = model.compute_schedule(x)
-    if schedule and ms > 0:
-        logging.info("Unit Test Passed: RCPSP schedule is computed successfully.")
-    else:
-        logging.error("Unit Test Failed: RCPSP schedule computation issue.")
-
-def run_unit_tests() -> None:
-    """
-    Run basic unit tests:
-      1. Test that update_archive_with_crowding produces a non-dominated archive.
-      2. Test that RCPSPModel.compute_schedule returns a feasible schedule.
-      3. Test that the new conversion functions handle edge cases and typical durations.
-    """
-    # ---------------- Archive and Schedule Tests ----------------
-    sol1 = np.array([1, 2, 3])
-    obj1 = np.array([10, 20, 30])
-    sol2 = np.array([2, 3, 4])
-    obj2 = np.array([12, 22, 32])
-    archive = []
-    archive = update_archive_with_crowding(archive, (sol1, obj1))
-    archive = update_archive_with_crowding(archive, (sol2, obj2))
-    if len(archive) != 1:
-        logging.error("Unit Test Failed: Archive contains dominated solutions.")
-    else:
-        logging.info("Unit Test Passed: Archive update produces non-dominated set.")
-
-    workers = {"Developer": 5, "Manager": 2, "Tester": 3}
-    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    tasks = get_default_tasks()
-    model = RCPSPModel(tasks, workers, worker_cost)
-    x = np.array([task["min"] for task in tasks])
-    schedule, ms = model.compute_schedule(x)
-    if schedule and ms > 0:
-        logging.info("Unit Test Passed: RCPSP schedule is computed successfully.")
-    else:
-        logging.error("Unit Test Failed: RCPSP schedule computation issue.")
-
-    # ---------------- Conversion Function Tests ----------------
-    # Test convert_hours_to_billable_days:
-    # - For non-positive durations, expect 0.0 billable days.
-    if convert_hours_to_billable_days(0) != 0.0 or convert_hours_to_billable_days(-5) != 0.0:
-        logging.error("Unit Test Failed: convert_hours_to_billable_days did not return 0.0 for non-positive durations.")
-    else:
-        logging.info("Unit Test Passed: convert_hours_to_billable_days handles non-positive durations correctly.")
-
-    # - For durations ≤ 4 hours, count as half day (0.5).
-    if convert_hours_to_billable_days(1.25) != 0.5 or convert_hours_to_billable_days(4) != 0.5:
-        logging.error("Unit Test Failed: convert_hours_to_billable_days did not count durations ≤4 hours as 0.5 day.")
-    else:
-        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly counts durations ≤4 hours as half day.")
-
-    # - For durations > 4 and ≤8 hours, count as full day (1.0).
-    if convert_hours_to_billable_days(4.1) != 1.0 or convert_hours_to_billable_days(7.9) != 1.0 or convert_hours_to_billable_days(8) != 1.0:
-        logging.error("Unit Test Failed: convert_hours_to_billable_days did not count durations >4 and ≤8 hours as 1 day.")
-    else:
-        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly counts durations >4 and ≤8 hours as full day.")
-
-    # - For durations >8 hours, ensure proper division into full days and remainder.
-    #   10 hours → 8 + 2 hours → 1 full day + 0.5 day = 1.5 days.
-    if convert_hours_to_billable_days(10) != 1.5:
-        logging.error("Unit Test Failed: convert_hours_to_billable_days did not correctly count 10 hours as 1.5 days.")
-    else:
-        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly converts 10 hours to 1.5 days.")
-    #   13 hours → 8 + 5 hours → 1 full day + 1 full day (since 5 > 4) = 2.0 days.
-    if convert_hours_to_billable_days(13) != 2.0:
-        logging.error("Unit Test Failed: convert_hours_to_billable_days did not correctly count 13 hours as 2.0 days.")
-    else:
-        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly converts 13 hours to 2.0 days.")
-    #   16 hours → exactly 2 full days = 2.0 days.
-    if convert_hours_to_billable_days(16) != 2.0:
-        logging.error("Unit Test Failed: convert_hours_to_billable_days did not correctly count 16 hours as 2.0 days.")
-    else:
-        logging.info("Unit Test Passed: convert_hours_to_billable_days correctly converts 16 hours to 2.0 days.")
-
-    # Test compute_billable_hours:
-    # - A half day should be billed as 4 hours and a full day as 8 hours.
-    #   3 hours (0.5 day) → 4 billable hours.
-    if compute_billable_hours(3) != 4:
-        logging.error("Unit Test Failed: compute_billable_hours did not convert 3 hours to 4 billable hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_hours correctly converts 3 hours to 4 billable hours.")
-    #   4.1 hours (1 day) → 8 billable hours.
-    if compute_billable_hours(4.1) != 8:
-        logging.error("Unit Test Failed: compute_billable_hours did not convert 4.1 hours to 8 billable hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_hours correctly converts 4.1 hours to 8 billable hours.")
-    #   10 hours (1.5 days) → 12 billable hours.
-    if compute_billable_hours(10) != 12:
-        logging.error("Unit Test Failed: compute_billable_hours did not convert 10 hours to 12 billable hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_hours correctly converts 10 hours to 12 billable hours.")
-    #   13 hours (2 days) → 16 billable hours.
-    if compute_billable_hours(13) != 16:
-        logging.error("Unit Test Failed: compute_billable_hours did not convert 13 hours to 16 billable hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_hours correctly converts 13 hours to 16 billable hours.")
-
-    # Test compute_billable_cost:
-    # For a full worker (allocation = 1)
-    #   - 3 hours → 4 billable hours, cost = 4 * wage_rate.
-    if compute_billable_cost(3, 1, 50) != 200:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for full worker with 3 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for full worker with 3 hours.")
-    #   - 10 hours → 12 billable hours, cost = 12 * wage_rate.
-    if compute_billable_cost(10, 1, 50) != 600:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for full worker with 10 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for full worker with 10 hours.")
-
-    # For a half worker (allocation = 0.5)
-    #   - 3 hours: 4 billable hours → half worker billed hours = 4 / 2 = 2; cost = 2 * wage_rate.
-    if compute_billable_cost(1, 0.5, 50) != 100:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 1 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 1 hours.")
-    if compute_billable_cost(3, 0.5, 50) != 200:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 3 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 3 hours.")
-    if compute_billable_cost(8, 0.5, 50) != 400:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 8 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 8 hours.")
-
-    if compute_billable_cost(10, 0.5, 50) != 500:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 10 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 10 hours.")
-
-    if compute_billable_cost(18, 0.5, 50) != 900:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for half worker with 18 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for half worker with 18 hours.")
-
-    # For a mixed allocation (e.g., 1.5, meaning one full worker + one half worker):
-    #   - 3 hours: full worker cost = 4 * 50 = 200; half worker cost = (4 / 2) * 50 = 100; total = 300.
-    if compute_billable_cost(3, 1.5, 50) != 300:
-
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (1.5) with 3 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (1.5) with 3 hours.")
-    #   - 10 hours: full worker cost = 12 * 50 = 600; half worker cost = (12 / 2) * 50 = 300; total = 900.
-    if compute_billable_cost(10, 1.5, 50) != 900:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (1.5) with 10 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (1.5) with 10 hours.")
-    #   - 13 hours (16 billable hours) with allocation = 2.5:
-    #       Full workers: 2 → 2 * 16 = 32; half worker: 1 → 16 / 2 = 8; total = 40; wage_rate = 40; cost = 40 * 40 = 1600.
-    if compute_billable_cost(13, 2.5, 40) != 1600:
-        logging.error("Unit Test Failed: compute_billable_cost did not compute cost correctly for mixed allocation (2.5) with 13 hours.")
-    else:
-        logging.info("Unit Test Passed: compute_billable_cost correctly computes cost for mixed allocation (2.5) with 13 hours.")
-
-# =============================================================================
 # ------------------------- Main Comparison ----------------------------------
 # =============================================================================
 
 if __name__ == '__main__':
-    """
-    In the benchmark experiments,we set 
-    the maximum iteration number to be 500, 
-    the number of search agents to be 100, and 
-    the  maximum  archive  size  to be 100.
-    To  obtain  the statistical results, the MOHHO and others are run 10 times.
-    Yüzgeç & Kuşoğlu (2020)
-    """
-    #run_unit_tests()
-    #grid_search()
-    runs = 1 # Number of independent runs for statistical significance
-    use_random_instance = True  # Set True for random instances
-    num_tasks = 100
-    POP = 50
-    ITER = 300
+    # Uncomment to run unit tests or grid search.
+    # run_unit_tests()
+    # grid_search()
+    runs = 1  # Number of independent runs for statistical significance
+    use_random_instance = False  # Set True for random instances
+    num_tasks = 20
+    POP = 20
+    ITER = 100
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
@@ -1771,9 +1251,8 @@ if __name__ == '__main__':
     
     means, stds = statistical_analysis(results)
     
-    
     plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
-    plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
+    plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Absolute Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
     plot_convergence(results["Generational_Distance"], "Generational Distance")
     
@@ -1785,6 +1264,6 @@ if __name__ == '__main__':
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
-    #plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
+    # plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")
