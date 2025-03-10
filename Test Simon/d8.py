@@ -525,7 +525,6 @@ def plot_pareto_3d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
 # =============================================================================
 # -------------------- Random Instance & Task Generation --------------------
 # =============================================================================
-
 def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[str, Any]]:
     tasks_list = []
     resource_types = list(workers.keys())
@@ -545,10 +544,10 @@ def generate_random_tasks(num_tasks: int, workers: Dict[str, int]) -> List[Dict[
             "resource": resource
         })
     return tasks_list
+
 # =============================================================================
 # ----------------------- Algorithm Implementations -------------------------
 # =============================================================================
-
 # --------------------------- MOHHO Algorithm -------------------------
 def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
@@ -1222,18 +1221,9 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             no_improvement_count = 0
     return archive, progress
 
-
-import numpy as np
-import json, logging, random, math
-from typing import List, Tuple, Dict, Any, Callable, Optional
-from tqdm import tqdm
-from scipy.stats import f_oneway
-
-# (Assume that all helper functions, objective functions, model definitions, visualization functions,
-#  and algorithm implementations (MOHHO_with_progress, PSO, MOACO_improved, etc.) remain unchanged.)
-
-# ------------------------- ALGORITHM RUNNERS -------------------------
-
+# =============================================================================
+# ------------------------- ALGORITHM RUNNERS --------------------------------
+# =============================================================================
 def run_baseline(model: 'RCPSPModel') -> Tuple[List[Dict[str, Any]], float]:
     """Run the baseline allocation."""
     return model.baseline_allocation()
@@ -1284,8 +1274,9 @@ ALGORITHMS: Dict[str, Callable[..., Tuple[Any, Any]]] = {
     "MOACO": run_moaco,
 }
 
-# ------------------------- EXPERIMENT RUNNER -------------------------
-
+# =============================================================================
+# ------------------------- EXPERIMENT RUNNER --------------------------------
+# =============================================================================
 def run_experiments(POP: int, ITER: int, runs: int = 1,
                     use_random_instance: bool = False, num_tasks: int = 10
                    ) -> Tuple[Dict[str, Any],
@@ -1355,8 +1346,10 @@ def run_experiments(POP: int, ITER: int, runs: int = 1,
 
     return results, archives_all, base_schedules
 
-# ------------------------- STATISTICAL ANALYSIS -------------------------
 
+# =============================================================================
+# ------------------------- STATISTICAL ANALYSIS -----------------------------
+# # ===========================================================================
 def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
     # Combine baseline and algorithm results.
     data = {"Baseline": results["Baseline"]["makespan"]}
@@ -1378,8 +1371,9 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
         logging.warning("Not enough data for ANOVA.")
     return means, stds
 
-# ------------------------- MAIN COMPARISON -------------------------
-
+# =============================================================================
+# ------------------------- MAIN COMPARISON ----------------------------------
+# =============================================================================
 if __name__ == '__main__':
     # Experiment parameters.
     runs = 1              # Number of independent runs for statistical significance.
