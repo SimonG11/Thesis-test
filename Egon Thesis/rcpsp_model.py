@@ -26,7 +26,7 @@ class RCPSPModel:
             effective_max = min(task["max"], capacity)
             alloc = round(x[tid - 1])
             alloc = max(task["min"], min(effective_max, alloc))
-            new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
+            new_effort = self.calculate_new_effort(task["base_effort"],  task["min"], task["max"], alloc)
             duration = new_effort / alloc
             duration = convertDurationtodays(duration)
             earliest = max([finish_times[dep] for dep in task["dependencies"]]) if task["dependencies"] else 0
@@ -46,6 +46,9 @@ class RCPSPModel:
         makespan = max(item["finish"] for item in schedule)
         return schedule, makespan
 
+    def calculate_new_effort(self, base_effort, min, max, alloc):
+        return base_effort * ((1 + (1.0 / max)) ** (alloc - min))
+    
     def baseline_allocation(self) -> Tuple[List[Dict[str, Any]], float]:
         """
         Generate a baseline schedule by assigning the minimum required workers to all tasks.

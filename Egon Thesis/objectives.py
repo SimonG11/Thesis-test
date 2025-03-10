@@ -22,7 +22,7 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         effective_max = min(task["max"], capacity)
         alloc = round(x[tid - 1] * 2) / 2
         alloc = max(task["min"], min(effective_max, alloc))
-        new_effort = task["base_effort"] * (1 + (1.0 / task["max"]) * (alloc - 1))
+        new_effort = model.calculate_new_effort(task["base_effort"],  task["min"], task["max"], alloc)
         duration = new_effort / alloc
         total_effort = utils.convertDurationtodaysCost(duration, alloc)
         wage_rate = model.worker_cost[resource_type]

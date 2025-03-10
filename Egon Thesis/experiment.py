@@ -180,10 +180,10 @@ def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, m
 if __name__ == '__main__':
     utils.initialize_seed(4)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    runs = 5
-    use_random_instance = False
-    num_tasks = 10
-    POPULATION = 50
+    runs = 1
+    use_random_instance = True
+    num_tasks = 20
+    POPULATION = 20
     ITERATIONS = 100
     tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3}) if use_random_instance else get_default_tasks()
 

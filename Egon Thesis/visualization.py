@@ -165,7 +165,7 @@ def plot_pareto_3d_individual(archive: List[Tuple[np.ndarray, np.ndarray]],
     
     # Plot scatter points for this algorithm.
     ax.scatter(objs[:, 0], objs[:, 1], -objs[:, 2],
-               c=color, marker=marker, s=80, edgecolor='k', label=label)
+               c=color, marker=marker, s=80, edgecolor='k', label=f'{label} n={len(archive)}')
     
     # Generate grid from provided x_limits and y_limits.
     plot_quadratic_surface(plane_coeffs, x_limits, y_limits, ax)
@@ -200,7 +200,7 @@ def plot_pareto_3d_combined(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
         if archive:
             objs = np.array([entry[1] for entry in archive])
             ax.scatter(objs[:, 0], objs[:, 1], -objs[:, 2],
-                       c=color, marker=marker, s=80, edgecolor='k', label=label)
+                       c=color, marker=marker, s=80, edgecolor='k', label=f'{label} n={len(archive)}')
     
     # Generate grid from provided x_limits and y_limits.
     plot_quadratic_surface(plane_coeffs, x_limits, y_limits, ax)
@@ -251,8 +251,8 @@ def plot_all_pareto_graphs(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
     else:
         print("Not enough points to fit a plane.")
         plane_coeffs = (0, 0, 0)
-    x_limits = (np.min(true_points[:, 0]), np.max(true_points[:, 0]))  # e.g., (260, 310)
-    y_limits = (np.min(true_points[:, 1]), np.max(true_points[:, 1]))
+    x_limits = (np.min(all_points[:, 0]), np.max(all_points[:, 0]))  # e.g., (260, 310)
+    y_limits = (np.min(all_points[:, 1]), np.max(all_points[:, 1]))
     # Adjust the plane so that none of the true points fall below it.
     # For each point, compute error = z_point - (a*x + b*y + c)
     a, b, c, d, e, f = plane_coeffs
@@ -389,7 +389,7 @@ def plot_non_dominated_archives_3d(archives: List[List[Tuple[np.ndarray, np.ndar
     # 7. Label axes and add title/legend.
     ax.set_xlabel("Makespan (hours)")
     ax.set_ylabel("Total Cost")
-    ax.set_zlabel("Resource Utilization (inverted)")
+    ax.set_zlabel("Resource Utilization")
     ax.set_title("Global Non-Dominated 3D Pareto Front by Algorithm")
     ax.legend(loc="best")
     plt.grid(True)
