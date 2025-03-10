@@ -1258,15 +1258,6 @@ def run_moaco(model: 'RCPSPModel', lb: np.ndarray, ub: np.ndarray, dim: int,
                                        colony_count=(pop // 2))
     return archive, progress
 
-def run_moaco_test(model: 'RCPSPModel', lb: np.ndarray, ub: np.ndarray, dim: int,
-              pop: int, iterations: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
-    """Run MOACO and return its archive and progress."""
-    archive, progress = MOACO_improved(lambda x: multi_objective(x, model),
-                                       model.tasks, lb, ub, pop, iterations,
-                                       alpha=1.0, beta=2.0, evaporation_rate=0.1,
-                                       colony_count=(pop // 2))
-    return archive, progress
-
 # Dictionary of algorithm runners.
 ALGORITHMS: Dict[str, Callable[..., Tuple[Any, Any]]] = {
     "MOHHO": run_mohho,
