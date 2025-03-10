@@ -1061,7 +1061,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
         task_heuristic = {v: 1.0 / (tcheby_vals[j] + 1e-6) for j, v in enumerate(possible_values)}
         return task_heuristic
 
-    # ----- Enhancement 1: Initialization of Colonies -----
+    # ----- Enhancement 3: Initialization of Colonies -----
     # Create multiple colonies to promote diverse exploration.
     dim = len(lb)
     colony_pheromones = []
@@ -1222,160 +1222,200 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
             no_improvement_count = 0
     return archive, progress
 
-# =============================================================================
-# ------------------------- Experiment Runner -------------------------------
-# =============================================================================
 
-def run_experiments(POP, ITER, runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10
-                   ) -> Tuple[Dict[str, Any], Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]], List[Dict[str, Any]]]:
+import numpy as np
+import json, logging, random, math
+from typing import List, Tuple, Dict, Any, Callable, Optional
+from tqdm import tqdm
+from scipy.stats import f_oneway
+
+# (Assume that all helper functions, objective functions, model definitions, visualization functions,
+#  and algorithm implementations (MOHHO_with_progress, PSO, MOACO_improved, etc.) remain unchanged.)
+
+# ------------------------- ALGORITHM RUNNERS -------------------------
+
+def run_baseline(model: 'RCPSPModel') -> Tuple[List[Dict[str, Any]], float]:
+    """Run the baseline allocation."""
+    return model.baseline_allocation()
+
+def run_mohho(model: 'RCPSPModel', lb: np.ndarray, ub: np.ndarray, dim: int,
+              pop: int, iterations: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
+    """Run MOHHO and return its archive and progress."""
+    archive, progress = MOHHO_with_progress(lambda x: multi_objective(x, model),
+                                            lb, ub, dim, pop, iterations)
+    return archive, progress
+
+def run_pso(model: 'RCPSPModel', lb: np.ndarray, ub: np.ndarray, dim: int,
+            pop: int, iterations: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], None]:
+    """Run MOPSO and return its archive (progress is not used)."""
+    objectives = [
+        lambda x: objective_makespan(x, model),
+        lambda x: objective_total_cost(x, model),
+        lambda x: objective_neg_utilization(x, model)
+    ]
+    optimizer = PSO(dim=dim, lb=lb, ub=ub, obj_funcs=objectives,
+                    pop=pop, c2=1.05, w_max=0.9, w_min=0.4,
+                    disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
+    optimizer.run(max_iter=iterations)
+    return optimizer.archive, None
+
+def run_moaco(model: 'RCPSPModel', lb: np.ndarray, ub: np.ndarray, dim: int,
+              pop: int, iterations: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
+    """Run MOACO and return its archive and progress."""
+    archive, progress = MOACO_improved(lambda x: multi_objective(x, model),
+                                       model.tasks, lb, ub, pop, iterations,
+                                       alpha=1.0, beta=2.0, evaporation_rate=0.1,
+                                       colony_count=(pop // 2))
+    return archive, progress
+
+def run_moaco_test(model: 'RCPSPModel', lb: np.ndarray, ub: np.ndarray, dim: int,
+              pop: int, iterations: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
+    """Run MOACO and return its archive and progress."""
+    archive, progress = MOACO_improved(lambda x: multi_objective(x, model),
+                                       model.tasks, lb, ub, pop, iterations,
+                                       alpha=1.0, beta=2.0, evaporation_rate=0.1,
+                                       colony_count=(pop // 2))
+    return archive, progress
+
+# Dictionary of algorithm runners.
+ALGORITHMS: Dict[str, Callable[..., Tuple[Any, Any]]] = {
+    "MOHHO": run_mohho,
+    "PSO": run_pso,
+    "MOACO": run_moaco,
+}
+
+# ------------------------- EXPERIMENT RUNNER -------------------------
+
+def run_experiments(POP: int, ITER: int, runs: int = 1,
+                    use_random_instance: bool = False, num_tasks: int = 10
+                   ) -> Tuple[Dict[str, Any],
+                              Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]],
+                              List[List[Dict[str, Any]]]]:
+    # Define workers and costs.
     workers = {"Developer": 10, "Manager": 2, "Tester": 3}
     worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
 
-    if use_random_instance:
-        tasks = generate_random_tasks(num_tasks, workers)
-    else:
-        tasks = get_default_tasks()
+    # Create tasks and initialize model.
+    tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
     model = RCPSPModel(tasks, workers, worker_cost)
     dim = len(model.tasks)
     lb_current = np.array([task["min"] for task in model.tasks])
     ub_current = np.array([task["max"] for task in model.tasks])
-    
-    results = {
-        "MOHHO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
-        "PSO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
-        "MOACO": {"best_makespan": [], "absolute_hypervolume": [], "spread": []},
-        "Baseline": {"makespan": []}
-    }
 
-    archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {"MOHHO": [], "PSO": [], "MOACO": []}
+    # Prepare results and archives dictionaries.
+    results = {algo: {"best_makespan": []} for algo in ALGORITHMS}
+    results["Baseline"] = {"makespan": []}
+    archives_all = {algo: [] for algo in ALGORITHMS}
     base_schedules = []
 
+    # Run experiments for the given number of independent runs.
     for run in tqdm(range(runs), desc="Experiment Runs", unit="run"):
         logging.info(f"Run {run+1}/{runs}...")
-        base_schedule, base_ms = model.baseline_allocation()
+        # Baseline schedule.
+        base_schedule, base_ms = run_baseline(model)
         results["Baseline"]["makespan"].append(base_ms)
         base_schedules.append(base_schedule)
+        
+        # Run each algorithm.
+        for algo_name, algo_func in ALGORITHMS.items():
+            archive, _ = algo_func(model, lb_current, ub_current, dim, POP, ITER)
+            best_ms = min(archive, key=lambda entry: entry[1][0])[1][0] if archive else None
+            results[algo_name]["best_makespan"].append(best_ms)
+            archives_all[algo_name].append(archive)
 
-        hho_iter = ITER
-        search_agents_no = POP
-        archive_hho, _ = MOHHO_with_progress(lambda x: multi_objective(x, model), lb_current, ub_current, dim, search_agents_no, hho_iter)
-        best_ms_hho = min(archive_hho, key=lambda entry: entry[1][0])[1][0] if archive_hho else None
-        results["MOHHO"]["best_makespan"].append(best_ms_hho)
-        archives_all["MOHHO"].append(archive_hho)
-
-        objectives = [lambda x: objective_makespan(x, model),
-                      lambda x: objective_total_cost(x, model),
-                      lambda x: objective_neg_utilization(x, model)]
-        optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
-                        pop=POP, c2=1.05, w_max=0.9, w_min=0.4,
-                        disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
-        _ = optimizer.run(max_iter=ITER)
-        archive_pso = optimizer.archive
-        best_ms_pso = min(archive_pso, key=lambda entry: entry[1][0])[1][0] if archive_pso else None
-        results["PSO"]["best_makespan"].append(best_ms_pso)
-        archives_all["PSO"].append(archive_pso)
-
-        ant_count = POP
-        moaco_iter = ITER
-        archive_moaco, _ = MOACO_improved(
-            lambda x: multi_objective(x, model),
-            model.tasks, lb_current, ub_current, ant_count, moaco_iter,
-            alpha=1.0, beta=2.0, evaporation_rate=0.1,
-            colony_count=(ant_count//2)
-        )
-
-        best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
-        results["MOACO"]["best_makespan"].append(best_ms_moaco)
-        archives_all["MOACO"].append(archive_moaco)
-
+    # Compute additional performance metrics.
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
-
     global_lower_bound = compute_combined_ideal(archives_all)
 
-    for alg in ["MOHHO", "PSO", "MOACO"]:
-        for archive in archives_all[alg]:
+    for algo_name in ALGORITHMS:
+        hv_list = []
+        spread_list = []
+        for archive in archives_all[algo_name]:
             abs_hv = absolute_hypervolume_fixed(archive, fixed_ref, global_lower_bound)
-            results[alg]["absolute_hypervolume"].append(abs_hv)
+            hv_list.append(abs_hv)
             sp = compute_spread(archive)
-            results[alg]["spread"].append(sp)
+            spread_list.append(sp)
+        results[algo_name]["absolute_hypervolume"] = hv_list
+        results[algo_name]["spread"] = spread_list
 
+    # Compute true Pareto front and generational distances.
     union_archive = [entry for alg in archives_all for archive in archives_all[alg] for entry in archive]
     true_pareto = []
     for sol, obj in union_archive:
         if not any(dominates(other_obj, obj) for _, other_obj in union_archive if not np.array_equal(other_obj, obj)):
             true_pareto.append(obj)
     true_pareto = np.array(true_pareto)
-    gd_results = {"MOHHO": [], "PSO": [], "MOACO": []}
-    for alg in ["MOHHO", "PSO", "MOACO"]:
-        for archive in archives_all[alg]:
+    gd_results = {algo: [] for algo in ALGORITHMS}
+    for algo_name in ALGORITHMS:
+        for archive in archives_all[algo_name]:
             gd = compute_generational_distance(archive, true_pareto) if archive and true_pareto.size > 0 else None
-            gd_results[alg].append(gd)
+            gd_results[algo_name].append(gd)
     results["Generational_Distance"] = gd_results
 
     return results, archives_all, base_schedules
 
-# =============================================================================
-# ------------------------- Statistical Analysis ----------------------------
-# =============================================================================
+# ------------------------- STATISTICAL ANALYSIS -------------------------
 
 def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
-    algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
-    means, stds, data = {}, {}, {}
-    data["Baseline"] = results["Baseline"]["makespan"]
-    for algo in ["MOHHO", "PSO", "MOACO"]:
+    # Combine baseline and algorithm results.
+    data = {"Baseline": results["Baseline"]["makespan"]}
+    for algo in ALGORITHMS:
         data[algo] = results[algo]["best_makespan"]
-    for algo in algos:
-        arr = np.array(data[algo])
+    
+    means, stds = {}, {}
+    for algo, values in data.items():
+        arr = np.array(values)
         means[algo] = np.mean(arr)
         stds[algo] = np.std(arr)
         logging.info(f"{algo}: Mean = {means[algo]:.2f}, Std = {stds[algo]:.2f}")
-    if all(len(data[algo]) > 1 for algo in algos):
-        F_stat, p_value = f_oneway(data["Baseline"], data["MOHHO"], data["PSO"], data["MOACO"])
+    
+    # Perform ANOVA if enough data is available.
+    if all(len(values) > 1 for values in data.values()):
+        F_stat, p_value = f_oneway(*data.values())
         logging.info(f"ANOVA: F = {F_stat:.2f}, p = {p_value:.4f}")
     else:
         logging.warning("Not enough data for ANOVA.")
     return means, stds
 
-# =============================================================================
-# ------------------------- Main Comparison ----------------------------------
-# =============================================================================
+# ------------------------- MAIN COMPARISON -------------------------
 
 if __name__ == '__main__':
-    # Uncomment to run unit tests or grid search.
-    # run_unit_tests()
-    # grid_search()
-    runs = 1  # Number of independent runs for statistical significance
-    use_random_instance = False  # Set True for random instances
+    # Experiment parameters.
+    runs = 1              # Number of independent runs for statistical significance.
+    use_random_instance = False  # Set to True for random problem instances.
     num_tasks = 20
-    POP = 100
-    ITER = 300
+    POP = 50              # Population size / number of agents.
+    ITER = 300            # Number of iterations.
 
-    if use_random_instance:
-        tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})
-    else:
-        tasks_for_exp = get_default_tasks()
-
-    results, archives_all, base_schedules = run_experiments(POP, ITER, runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks)
+    # Run experiments.
+    results, archives_all, base_schedules = run_experiments(POP, ITER,
+                                                             runs=runs,
+                                                             use_random_instance=use_random_instance,
+                                                             num_tasks=num_tasks)
     
+    # Save results.
     with open('experiment_results.json', 'w') as f:
         json.dump(results, f, indent=4)
     
+    # Perform statistical analysis.
     means, stds = statistical_analysis(results)
     
-    plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
-    plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Absolute Hypervolume (%)")
-    plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
+    # Visualizations – easily extended by adding more plot functions.
+    plot_convergence({algo: results[algo]["best_makespan"] for algo in ALGORITHMS}, "Best Makespan (hours)")
+    plot_convergence({algo: results[algo]["absolute_hypervolume"] for algo in ALGORITHMS}, "Absolute Hypervolume (%)")
+    plot_convergence({algo: results[algo]["spread"] for algo in ALGORITHMS}, "Spread (Diversity)")
     plot_convergence(results["Generational_Distance"], "Generational Distance")
     
     fixed_ref = compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
-    last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
-    plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
-    plot_pareto_3d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    last_archives = [archives_all[algo][-1] for algo in ALGORITHMS]
+    plot_pareto_2d(last_archives, list(ALGORITHMS.keys()), ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    plot_pareto_3d(last_archives, list(ALGORITHMS.keys()), ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     
-    last_baseline = base_schedules[-1]
-    last_makespan = results["Baseline"]["makespan"][-1]
+    # Optionally plot the baseline schedule.
+    # last_baseline = base_schedules[-1]
+    # last_makespan = results["Baseline"]["makespan"][-1]
     # plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")
