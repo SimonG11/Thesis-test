@@ -710,28 +710,71 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
         archive: A list of non-dominated solutions (each as a tuple of decision and objective vectors).
         progress: A list recording the best makespan value (first objective) per iteration.
     """
-    # Enhanced initialization using chaotic map
+     # --- Helper functions for normalization ---
+    def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Min–max scales each column of 'mat' to the [0,1] interval.
+        Returns the normalized matrix, along with the per-dimension minima and maxima.
+        """
+        mat = np.array(mat, dtype=float)
+        mins = mat.min(axis=0)
+        maxs = mat.max(axis=0)
+        norm = np.zeros_like(mat)
+        for d in range(mat.shape[1]):
+            range_val = maxs[d] - mins[d]
+            if range_val != 0:
+                norm[:, d] = (mat[:, d] - mins[d]) / range_val
+            else:
+                norm[:, d] = 0.5
+        return norm, mins, maxs
+
+    def normalize_obj(obj, mins, maxs):
+        """
+        Normalize a single objective vector using provided minima and maxima.
+        """
+        obj = np.array(obj, dtype=float)
+        norm_obj = np.zeros_like(obj)
+        for i in range(len(obj)):
+            range_val = maxs[i] - mins[i]
+            if range_val != 0:
+                norm_obj[i] = (obj[i] - mins[i]) / range_val
+            else:
+                norm_obj[i] = 0.5
+        return norm_obj
+
+    # --- Initialization ---
     X = chaotic_map_initialization(lb, ub, dim, search_agents_no)
-    # Initialize self-adaptive step sizes for each hawk and dimension.
     step_sizes = np.ones((search_agents_no, dim))
     archive: List[Tuple[np.ndarray, np.ndarray]] = []
     progress: List[float] = []
     t = 0
     diversity_threshold = 0.1 * np.mean(ub - lb)
+    
     while t < max_iter:
-        # Non-linear decaying escape energy (using cosine schedule)
-        E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
+        # Update archive with current (feasible) solutions using original objectives.
         for i in range(search_agents_no):
             X[i, :] = discretize_vector(np.clip(X[i, :], lb, ub), lb, ub)
             f_val = objf(X[i, :])
             archive = update_archive_with_crowding(archive, (X[i, :].copy(), f_val.copy()))
+        
+        # Compute normalization parameters based on the current population's objectives.
+        pop_objs = [objf(X[i, :]) for i in range(search_agents_no)]
+        pop_objs_mat = np.array(pop_objs)
+        _, pop_mins, pop_maxs = normalize_matrix(pop_objs_mat)
+        
+        # Choose a "rabbit" (best solution) from the archive.
         rabbit = random.choice(archive)[0] if archive else X[0, :].copy()
+        
+        # --- Update each hawk agent ---
         for i in range(search_agents_no):
             old_x = X[i, :].copy()
-            old_obj = np.linalg.norm(objf(old_x))
+            # Compute normalized objective norm for comparison.
+            old_obj = np.linalg.norm(normalize_obj(objf(old_x), pop_mins, pop_maxs))
             E0 = 2 * random.random() - 1
+            E1 = 2 * math.cos((t / max_iter) * (math.pi / 2))
             Escaping_Energy = E1 * E0
             r = random.random()
+            
             if abs(Escaping_Energy) >= 1:
                 q = random.random()
                 rand_index = random.randint(0, search_agents_no - 1)
@@ -749,33 +792,36 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                 elif r < 0.5 and abs(Escaping_Energy) >= 0.5:
                     jump_strength = 2 * (1 - random.random())
                     X1 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - X[i, :])
-                    if np.linalg.norm(objf(X1)) < np.linalg.norm(objf(X[i, :])):
+                    if np.linalg.norm(normalize_obj(objf(X1), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                         X[i, :] = X1.copy()
                     else:
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - X[i, :]) + np.random.randn(dim) * levy(dim)
-                        if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
+                        if np.linalg.norm(normalize_obj(objf(X2), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                             X[i, :] = X2.copy()
                 elif r < 0.5 and abs(Escaping_Energy) < 0.5:
                     jump_strength = 2 * (1 - random.random())
                     X1 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0))
-                    if np.linalg.norm(objf(X1)) < np.linalg.norm(objf(X[i, :])):
+                    if np.linalg.norm(normalize_obj(objf(X1), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                         X[i, :] = X1.copy()
                     else:
                         X2 = rabbit - Escaping_Energy * np.abs(jump_strength * rabbit - np.mean(X, axis=0)) + np.random.randn(dim) * levy(dim)
-                        if np.linalg.norm(objf(X2)) < np.linalg.norm(objf(X[i, :])):
+                        if np.linalg.norm(normalize_obj(objf(X2), pop_mins, pop_maxs)) < np.linalg.norm(normalize_obj(objf(X[i, :]), pop_mins, pop_maxs)):
                             X[i, :] = X2.copy()
+            
             new_x = old_x + step_sizes[i, :] * (X[i, :] - old_x)
             new_x = discretize_vector(np.clip(new_x, lb, ub), lb, ub)
-            new_obj = np.linalg.norm(objf(new_x))
+            new_obj = np.linalg.norm(normalize_obj(objf(new_x), pop_mins, pop_maxs))
             if new_obj < old_obj:
                 step_sizes[i, :] *= 0.95
             else:
                 step_sizes[i, :] *= 1.05
             X[i, :] = new_x.copy()
+        
+        # --- Diversity injection ---
         dists = [np.linalg.norm(X[i] - X[j]) for i in range(search_agents_no) for j in range(i+1, search_agents_no)]
         avg_dist = np.mean(dists) if dists else 0
         if avg_dist < diversity_threshold:
-            obj_values = [np.linalg.norm(objf(X[i])) for i in range(search_agents_no)]
+            obj_values = [np.linalg.norm(normalize_obj(objf(X[i]), pop_mins, pop_maxs)) for i in range(search_agents_no)]
             worst_idx = np.argmax(obj_values)
             if archive:
                 base = random.choice(archive)[0]
@@ -785,40 +831,27 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
             else:
                 X[worst_idx, :] = discretize_vector(chaotic_map_initialization(lb, ub, dim, 1)[0], lb, ub)
                 step_sizes[worst_idx, :] = np.ones(dim)
-        best_makespan = np.min([objf(X[i, :])[0] for i in range(search_agents_no)])
-        progress.append(best_makespan)
+        
+        # --- Compute balanced progress metric ---
+        normalized_objs = [normalize_obj(objf(X[i, :]), pop_mins, pop_maxs) for i in range(search_agents_no)]
+        ideal = np.min(np.array(normalized_objs), axis=0)
+        # Tchebycheff scalarization: for each agent, take the maximum deviation from the ideal.
+        tcheby_values = [max(abs(n_obj - ideal)) for n_obj in normalized_objs]
+        progress_metric = min(tcheby_values)
+        progress.append(progress_metric)
+        
         t += 1
     return archive, progress
-
 # --------------------------- MOPSO Algorithm -------------------------
+
 class PSO:
     """
-    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) for RCPSP with several enhancements.
+    Adaptive MOPSO (Multi-Objective Particle Swarm Optimization) for RCPSP with normalization.
     
-    Enhancements and Scientific Justifications:
-      1. Self-adaptive Inertia Weight Update:
-         - Dynamically adjusts the inertia weight based on performance improvements to balance exploration and exploitation.
-         - Citation: Zhang et al. (2018), Adaptive MOPSO approaches.
-         - URL: https://doi.org/10.1007/s11761-018-0231-7
-
-      2. Periodic Mutation/Disturbance:
-         - Introduces random disturbances (mutation) in the particle positions to prevent premature convergence.
-         - Citation: Sun et al. (2019), "Chaotic Multi-Objective Particle Swarm Optimization Algorithm Incorporating Clone Immunity"
-         - URL: https://doi.org/10.3390/math7020146
-
-      3. Archive Update via Crowding Distance:
-         - Maintains an external archive of non-dominated solutions using a NSGA-II style crowding distance measure to preserve diversity.
-         - Citation: Deb et al. (2002), "Multi-Objective Optimization Using Evolutionary Algorithms"
-         - URL: https://doi.org/10.1109/4235.996017
-
-      4. Hypercube-Based Leader Selection:
-         - Divides the objective space into hypercubes and selects leaders based on the inverse density of solutions in each cell,
-           promoting diverse search directions.
-         - Citation: Coello Coello et al. (2004)
-         - URL: https://doi.org/10.1080/03052150410001647966
-
-    This class provides methods to initialize the swarm, update velocities and positions, manage the archive,
-    and run the optimization for a specified number of iterations.
+    Enhancements:
+      - Normalization of objectives (using dynamic min–max scaling) so that makespan, cost, and utilization are balanced.
+      - Tchebycheff scalarization: each particle is evaluated by the maximum deviation (in normalized space) from the ideal point.
+      - Leader selection via hypercube division uses normalized objectives.
     """
     def __init__(self, dim: int, lb: np.ndarray, ub: np.ndarray,
                  obj_funcs: List[Callable[[np.ndarray], float]], pop: int = 30,
@@ -839,7 +872,8 @@ class PSO:
         self.swarm: List[Dict[str, Any]] = []
         # Initialize positions using allowed half-step values.
         for _ in range(pop):
-            pos = np.array([random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5))) for i in range(dim)])
+            pos = np.array([random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5)))
+                            for i in range(dim)])
             vel = np.array([random.uniform(-self.vmax[i], self.vmax[i]) for i in range(dim)])
             particle = {
                 'position': pos,
@@ -860,46 +894,68 @@ class PSO:
             return np.array([self.obj_funcs[0](pos)])
         else:
             return np.array([f(pos) for f in self.obj_funcs])
-        
-    def select_leader_hypercube(self) -> List[np.ndarray]:
+    
+    @staticmethod
+    def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Select leader particles using hypercube division of the archive.
+        Min–max scales each column of 'mat' to the [0,1] interval.
+        Returns the normalized matrix, and the per-dimension minima and maxima.
+        """
+        mat = np.array(mat, dtype=float)
+        mins = mat.min(axis=0)
+        maxs = mat.max(axis=0)
+        norm = np.zeros_like(mat)
+        for d in range(mat.shape[1]):
+            range_val = maxs[d] - mins[d]
+            if range_val != 0:
+                norm[:, d] = (mat[:, d] - mins[d]) / range_val
+            else:
+                norm[:, d] = 0.5
+        return norm, mins, maxs
+
+    @staticmethod
+    def normalize_obj(obj, mins, maxs):
+        """
+        Normalize a single objective vector using provided minima and maxima.
+        """
+        obj = np.array(obj, dtype=float)
+        norm_obj = np.zeros_like(obj)
+        for i in range(len(obj)):
+            range_val = maxs[i] - mins[i]
+            if range_val != 0:
+                norm_obj[i] = (obj[i] - mins[i]) / range_val
+            else:
+                norm_obj[i] = 0.5
+        return norm_obj
+
+    def select_leader_hypercube(self, norm_mins: np.ndarray, norm_maxs: np.ndarray) -> List[np.ndarray]:
+        """
+        Select leader particles using hypercube division based on normalized objectives.
         """
         if not self.archive:
             return [random.choice(self.swarm)['position'] for _ in range(self.pop)]
+        # Normalize archive objective values using current swarm's normalization parameters.
         objs = np.array([entry[1] for entry in self.archive])
+        norm_objs = np.array([self.normalize_obj(obj, norm_mins, norm_maxs) for obj in objs])
         num_bins = 5
-        mins = np.min(objs, axis=0)
-        maxs = np.max(objs, axis=0)
+        mins = np.min(norm_objs, axis=0)
+        maxs = np.max(norm_objs, axis=0)
         ranges = np.where(maxs - mins == 0, 1, maxs - mins)
         cell_indices = []
         cell_counts = {}
-        for entry in self.archive:
-            idx = tuple(((entry[1] - mins) / ranges * num_bins).astype(int))
+        for norm_obj in norm_objs:
+            idx = tuple(((norm_obj - mins) / ranges * num_bins).astype(int))
             idx = tuple(min(x, num_bins - 1) for x in idx)
             cell_indices.append(idx)
             cell_counts[idx] = cell_counts.get(idx, 0) + 1
-        leaders = []
         weights = [1 / cell_counts[cell_indices[i]] for i in range(len(self.archive))]
         total_weight = sum(weights)
         probs = [w / total_weight for w in weights]
+        leaders = []
         for _ in range(self.pop):
             chosen = np.random.choice(len(self.archive), p=probs)
             leaders.append(self.archive[chosen][0])
         return leaders
-
-    def jump_improved_operation(self) -> None:
-        """Perform a jump operation to escape local optima."""
-        if len(self.archive) < 2:
-            return
-        c1, c2 = random.sample(self.archive, 2)
-        a1, a2 = random.uniform(0, 1), random.uniform(0, 1)
-        oc1 = c1[0] + a1 * (c1[0] - c2[0])
-        oc2 = c2[0] + a2 * (c2[0] - c1[0])
-        for oc in [oc1, oc2]:
-            oc = np.array([clip_round_half(val, self.lb[i], self.ub[i]) for i, val in enumerate(oc)])
-            obj_val = self.evaluate(oc)
-            self.archive = update_archive_with_crowding(self.archive, (oc, obj_val))
 
     def disturbance_operation(self, particle: Dict[str, Any]) -> None:
         """Apply a random disturbance to a particle's position to enhance exploration."""
@@ -920,44 +976,82 @@ class PSO:
 
     def move(self) -> None:
         """
-        Update the swarm by moving each particle, applying self-adaptive inertia weight updates,
-        and periodic disturbance operations.
+        Update the swarm by moving each particle.
+        
+        The new implementation uses normalization and Tchebycheff scalarization to compute a balanced
+        performance measure, which then drives the adaptive inertia weight update.
         """
         self.iteration += 1
-        leaders = self.select_leader_hypercube()
+        
+        # --- Compute normalization parameters from current swarm positions ---
+        raw_objs = np.array([self.evaluate(p['position']) for p in self.swarm])
+        norm_objs, norm_mins, norm_maxs = self.normalize_matrix(raw_objs)
+        # Ideal point (component-wise minimum in normalized space)
+        ideal = np.min(norm_objs, axis=0)
+        
+        # --- Select leaders using normalized hypercube division ---
+        leaders = self.select_leader_hypercube(norm_mins, norm_maxs)
+        
         for idx, particle in enumerate(self.swarm):
             old_pos = particle['position'].copy()
-            old_obj = np.linalg.norm(self.evaluate(old_pos))
+            old_obj_raw = self.evaluate(old_pos)
+            old_norm = self.normalize_obj(old_obj_raw, norm_mins, norm_maxs)
+            # Tchebycheff scalarization: maximum deviation from the ideal point.
+            old_scalar = np.max(np.abs(old_norm - ideal))
+            
             r2 = random.random()
             guide = leaders[idx]
-            # Standard PSO velocity and position update.
+            # Standard PSO velocity update.
             new_v = particle['w'] * particle['velocity'] + self.c2 * r2 * (guide - particle['position'])
             new_v = np.array([np.clip(new_v[i], -self.vmax[i], self.vmax[i]) for i in range(self.dim)])
             particle['velocity'] = new_v
             new_pos = particle['position'] + new_v
             new_pos = np.array([clip_round_half(new_pos[i], self.lb[i], self.ub[i]) for i in range(self.dim)])
             particle['position'] = new_pos
-            particle['obj'] = self.evaluate(new_pos)
+            new_obj_raw = self.evaluate(new_pos)
+            new_norm = self.normalize_obj(new_obj_raw, norm_mins, norm_maxs)
+            new_scalar = np.max(np.abs(new_norm - ideal))
+            particle['obj'] = new_obj_raw
             particle['pbest'] = new_pos.copy()
-            # Update inertia weight based on performance.
-            new_obj = np.linalg.norm(self.evaluate(new_pos))
-            if new_obj < old_obj:
+            
+            # --- Self-adaptive inertia weight update based on normalized improvement ---
+            if new_scalar < old_scalar:
                 particle['w'] = max(particle['w'] * 0.95, self.w_min)
             else:
                 particle['w'] = min(particle['w'] * 1.05, self.w_max)
+            
             self.disturbance_operation(particle)
+        
         self.update_archive()
         if self.iteration % self.jump_interval == 0:
             self.jump_improved_operation()
+        
         positions = np.array([p['position'] for p in self.swarm])
         if len(positions) > 1:
-            pairwise_dists = [np.linalg.norm(positions[i] - positions[j]) for i in range(len(positions)) for j in range(i+1, len(positions))]
+            pairwise_dists = [np.linalg.norm(positions[i] - positions[j])
+                              for i in range(len(positions)) for j in range(i+1, len(positions))]
             avg_distance = np.mean(pairwise_dists)
             if avg_distance < 0.1 * np.mean(self.ub - self.lb):
                 idx_to_mutate = random.randint(0, self.pop - 1)
-                self.swarm[idx_to_mutate]['position'] = np.array([random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5))) for i in range(self.dim)])
+                self.swarm[idx_to_mutate]['position'] = np.array(
+                    [random.choice(list(np.arange(self.lb[i], self.ub[i] + 0.5, 0.5)))
+                     for i in range(self.dim)])
                 self.swarm[idx_to_mutate]['obj'] = self.evaluate(self.swarm[idx_to_mutate]['position'])
+        
         self.update_archive()
+
+    def jump_improved_operation(self) -> None:
+        """Perform a jump operation to escape local optima."""
+        if len(self.archive) < 2:
+            return
+        c1, c2 = random.sample(self.archive, 2)
+        a1, a2 = random.uniform(0, 1), random.uniform(0, 1)
+        oc1 = c1[0] + a1 * (c1[0] - c2[0])
+        oc2 = c2[0] + a2 * (c2[0] - c1[0])
+        for oc in [oc1, oc2]:
+            oc = np.array([clip_round_half(val, self.lb[i], self.ub[i]) for i, val in enumerate(oc)])
+            obj_val = self.evaluate(oc)
+            self.archive = update_archive_with_crowding(self.archive, (oc, obj_val))
 
     def update_archive(self) -> None:
         """Update the external archive using the current swarm particles."""
@@ -971,7 +1065,7 @@ class PSO:
         Run the Adaptive MOPSO for a specified number of iterations.
         
         Returns:
-            convergence: A list of the best makespan values recorded per iteration.
+            convergence: A list of the best makespan values (first objective) recorded per iteration.
         """
         if max_iter is None:
             max_iter = self.max_iter
@@ -981,6 +1075,7 @@ class PSO:
             best_ms = min(p['obj'][0] for p in self.swarm)
             convergence.append(best_ms)
         return convergence
+
 
 # --------------------------- MOACO Algorithm -------------------------
 def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
@@ -1754,7 +1849,7 @@ if __name__ == '__main__':
     #run_unit_tests()
     #grid_search()
     runs = 1 # Number of independent runs for statistical significance
-    use_random_instance = True  # Set True for random instances
+    use_random_instance = False  # Set True for random instances
     num_tasks = 100
     POP = 50
     ITER = 300
