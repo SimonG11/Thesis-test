@@ -1,0 +1,15 @@
+{
+    "MOHHO": {
+        "best_config": {
+            "iter": 50,
+            "population": 30
+        },
+        "best_absolute_hypervolume": 76.32000000000001,
+        "all_results": {
+            "{\"iter\": 20, \"population\": 20}": 67.94,
+            "{\"iter\": 50, \"population\": 20}": 75.1,
+            "{\"iter\": 20, \"population\": 30}": 71.04,
+            "{\"iter\": 50, \"population\": 30}": 76.32000000000001
+        }
+    }
+}

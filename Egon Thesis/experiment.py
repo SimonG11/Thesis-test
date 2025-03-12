@@ -63,6 +63,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
         optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
                         pop=population, c2=1.05, w_max=0.9, w_min=0.4,
                         disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
+        start_time = time.time()
         conv_pso = optimizer.run(max_iter=iterrations)
         results["PSO"]["runtimes"].append(time.time() - start_time)
         archive_pso = optimizer.archive
@@ -161,8 +162,8 @@ if __name__ == '__main__':
     runs = 2
     use_random_instance = False
     num_tasks = 20
-    POPULATION = 20
-    ITERATIONS = 100
+    POPULATION = 100
+    ITERATIONS = 200
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks, population=POPULATION, iterrations=ITERATIONS)
     

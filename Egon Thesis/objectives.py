@@ -3,7 +3,7 @@ import numpy as np
 from typing import List
 from rcpsp_model import RCPSPModel
 import utils
-from utils import round_half
+from utils import round_half, compute_billable_cost
 
 
 def objective_makespan(x: np.ndarray, model: RCPSPModel) -> float:
@@ -20,13 +20,13 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
         resource_type = task["resource"]
         capacity = model.workers[resource_type]
         effective_max = min(task["max"], capacity)
-        alloc = round(x[tid - 1] * 2) / 2
+        alloc = round_half(x[tid - 1])
         alloc = max(task["min"], min(effective_max, alloc))
         new_effort = model.calculate_new_effort(task["base_effort"],  task["min"], task["max"], alloc)
         duration = new_effort / alloc
-        total_effort = utils.convertDurationtodaysCost(duration, alloc)
         wage_rate = model.worker_cost[resource_type]
-        total_cost += total_effort * wage_rate
+        task_cost = compute_billable_cost(duration, alloc, wage_rate)
+        total_cost += task_cost
     return total_cost
 
 

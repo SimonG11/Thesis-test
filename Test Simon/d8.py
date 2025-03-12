@@ -1367,11 +1367,11 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
 # =============================================================================
 if __name__ == '__main__':
     # Experiment parameters.
-    runs = 1              # Number of independent runs for statistical significance.
+    runs = 2              # Number of independent runs for statistical significance.
     use_random_instance = False  # Set to True for random problem instances.
     num_tasks = 20
-    POP = 50              # Population size / number of agents.
-    ITER = 300            # Number of iterations.
+    POP = 100              # Population size / number of agents.
+    ITER = 100            # Number of iterations.
 
     # Run experiments.
     results, archives_all, base_schedules = run_experiments(POP, ITER,
