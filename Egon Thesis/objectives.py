@@ -1,7 +1,5 @@
-# objectives.py
 import numpy as np
 from rcpsp_model import RCPSPModel
-import utils
 from utils import round_half, compute_billable_cost
 
 
@@ -29,7 +27,7 @@ def objective_total_cost(x: np.ndarray, model: RCPSPModel) -> float:
     return total_cost
 
 
-def objective_neg_utilization(x: np.ndarray, model: RCPSPModel, schedule, makespan) -> float:
+def objective_neg_utilization(model: RCPSPModel, schedule, makespan) -> float:
     """
     Objective 3: Maximize average resource utilization.
     (Negated so that all objectives are minimized.)
@@ -70,5 +68,5 @@ def multi_objective(x: np.ndarray, model: RCPSPModel) -> np.ndarray:
     return np.array([
         makespan,
         objective_total_cost(x, model),
-        objective_neg_utilization(x, model, schedule, makespan)
+        objective_neg_utilization(model, schedule, makespan)
     ])

@@ -1,4 +1,3 @@
-# visualization.py
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List, Tuple, Optional,Dict
@@ -28,7 +27,7 @@ def fit_quadratic_surface_to_points(points: np.ndarray) -> Tuple[float, float, f
     A = np.column_stack([X**2, Y**2, X*Y, X, Y, np.ones_like(X)])
     
     # Solve the least-squares problem.
-    coeffs, residuals, rank, s = np.linalg.lstsq(A, -Z, rcond=None)
+    coeffs, _, _, _ = np.linalg.lstsq(A, -Z, rcond=None)
     return tuple(coeffs)
 
 
@@ -66,30 +65,9 @@ def plot_quadratic_surface(quad_coeffs: Tuple[float, float, float, float, float,
     return ax
 
 
-def fit_plane_to_points(points: np.ndarray) -> Tuple[float, float, float]:
-    """
-    Fit a plane z = a*x + b*y + c to a set of points.
-    
-    Parameters:
-        points: An array of shape (n_points, 3) representing points in 3D space.
-        
-    Returns:
-        A tuple (a, b, c) such that the best-fit plane is given by z = a*x + b*y + c.
-    """
-    # Assume points is an array with columns: x, y, z.
-    # We want to solve: z = a*x + b*y + c
-    # Formulate the linear system: [x, y, 1] * [a, b, c].T = z.
-    X = np.c_[points[:, 0], points[:, 1], np.ones(points.shape[0])]
-    z = points[:, 2]
-    # Solve the least squares problem:
-    coeffs, residuals, rank, s = np.linalg.lstsq(X, z, rcond=None)
-    a, b, c = coeffs
-    return a, b, c
-
-
 def plot_gantt(schedule: List[dict], title: str) -> None:
     """Plot a Gantt chart for the given schedule."""
-    fig, ax = plt.subplots(figsize=(10, 6))
+    _, ax = plt.subplots(figsize=(10, 6))
     yticks, yticklabels = [], []
     for i, task in enumerate(schedule):
         ax.broken_barh([(task["start"], task["duration"])],
@@ -113,7 +91,7 @@ def plot_convergence(metrics_dict: dict, metric_name: str) -> None:
     """
     Plot boxplots for a given performance metric across different runs.
     """
-    fig, ax = plt.subplots(figsize=(8, 6))
+    _, ax = plt.subplots(figsize=(8, 6))
     data = list(metrics_dict.values())
     ax.boxplot(data, tick_labels=list(metrics_dict.keys()))
     ax.set_ylabel(metric_name)
@@ -277,7 +255,7 @@ def plot_all_pareto_graphs(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
 def plot_comparative_bar_chart(results: dict, metric: str, algos: List[str]) -> None:
     means = {algo: np.mean(results[algo][metric]) for algo in algos}
     stds = {algo: np.std(results[algo][metric]) for algo in algos}
-    fig, ax = plt.subplots(figsize=(8,6))
+    _, ax = plt.subplots(figsize=(8,6))
     x = np.arange(len(algos))
     ax.bar(x, [means[a] for a in algos], yerr=[stds[a] for a in algos], capsize=5)
     ax.set_xticks(x)
@@ -292,7 +270,7 @@ def plot_aggregate_convergence(convergence_data: Dict[str, List[List[float]]], t
     Plot the aggregate convergence curves for each algorithm.
     For each algorithm, the mean and standard deviation over iterations are computed and plotted.
     """
-    fig, ax = plt.subplots(figsize=(10,6))
+    _, ax = plt.subplots(figsize=(10,6))
     for algo, curves in convergence_data.items():
         curves_arr = np.array(curves)
         mean_curve = np.mean(curves_arr, axis=0)

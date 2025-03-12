@@ -1,7 +1,8 @@
-# metrics.py
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 from utils import dominates
+import logging
+from scipy.stats import f_oneway
 
 
 def approximate_hypervolume(archive: List[Tuple[np.ndarray, np.ndarray]],
@@ -223,4 +224,23 @@ def compute_average_distance_to_ideal(archive: List[Tuple[np.ndarray, np.ndarray
     # Compute Euclidean distances from each objective vector to the ideal.
     distances = np.linalg.norm(objs - ideal, axis=1)
     return np.mean(distances)
+
+
+def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
+    algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
+    means, stds, data = {}, {}, {}
+    data["Baseline"] = results["Baseline"]["makespan"]
+    for algo in ["MOHHO", "PSO", "MOACO"]:
+        data[algo] = results[algo]["best_makespan"]
+    for algo in algos:
+        arr = np.array(data[algo])
+        means[algo] = np.mean(arr)
+        stds[algo] = np.std(arr)
+        logging.info(f"{algo}: Mean = {means[algo]:.2f}, Std = {stds[algo]:.2f}")
+    if all(len(data[algo]) > 1 for algo in algos):
+        F_stat, p_value = f_oneway(data["Baseline"], data["MOHHO"], data["PSO"], data["MOACO"])
+        logging.info(f"ANOVA: F = {F_stat:.2f}, p = {p_value:.4f}")
+    else:
+        logging.warning("Not enough data for ANOVA.")
+    return means, stds
 
