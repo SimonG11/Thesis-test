@@ -319,3 +319,67 @@ def convertDurationtodaysCost(duration: float, alloc: float) -> float:
             ActualAcualEffort += 4
         return ActualAcualEffort
 
+
+# Named constants for clarity.
+DAY_HOURS_FULL = 8    # Full working day in billable hours.
+DAY_HOURS_HALF = DAY_HOURS_FULL / 2    # Half working day in billable hours.
+
+def convert_hours_to_billable_days(duration: float) -> float:
+    """
+    Convert a duration (in hours) to billable days.
+    Business Rules:
+      - Non-positive durations return 0.0 days.
+      - Durations ≤ DAY_HOURS_HALF (4 hours) count as a half day (0.5).
+      - Durations > DAY_HOURS_HALF and ≤ DAY_HOURS_FULL (8 hours) count as a full day (1.0).
+      - For durations > DAY_HOURS_FULL:
+            Compute full days = duration // DAY_HOURS_FULL.
+            Let remainder = duration - (full_days * DAY_HOURS_FULL).
+            If remainder is ≤ DAY_HOURS_HALF, add 0.5 day; otherwise, add 1.0 day.
+    """
+    if duration <= 0:
+        return 0.0
+    full_days = int(duration // DAY_HOURS_FULL)
+    remainder = duration - full_days * DAY_HOURS_FULL
+    if remainder == 0:
+        extra = 0.0
+    elif remainder <= DAY_HOURS_HALF:
+        extra = 0.5
+    else:
+        extra = 1.0
+    return full_days + extra
+
+def compute_billable_hours(duration: float) -> float:
+    """
+    Convert a duration (in hours) to billable hours.
+    Billing Conversion:
+      - Each full day is billed as DAY_HOURS_FULL hours.
+      - Each half day is billed as DAY_HOURS_HALF hours.
+    """
+    billable_days = convert_hours_to_billable_days(duration)
+    full_days = int(billable_days)
+    half_day = 1 if (billable_days - full_days) >= 0.5 else 0
+    return full_days * DAY_HOURS_FULL + half_day * DAY_HOURS_HALF
+
+def compute_billable_cost(duration: float, allocation: float, wage_rate: float) -> float:
+    """
+    Compute the total labor cost given a task's duration (in hours), worker allocation, and wage rate.
+    """
+    F = compute_billable_hours(duration)
+    full_cost = F * wage_rate
+    if allocation < 1:
+        # Pure half worker.
+        if duration < 2:
+            return full_cost / 2
+        else:
+            if F <= DAY_HOURS_FULL:
+                return full_cost
+            else:
+                discount = (DAY_HOURS_HALF * wage_rate) / 2
+                return full_cost - discount
+    else:
+        full_workers = int(allocation)
+        fractional = allocation - full_workers
+        if fractional >= 0.5:
+            return full_workers * full_cost + full_cost / 2
+        else:
+            return full_workers * full_cost
