@@ -131,7 +131,8 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             gd = compute_generational_distance(archive, true_pareto) if archive and true_pareto.size > 0 else None
             gd_results[alg].append(gd)
     results["Generational_Distance"] = gd_results
-
+    schedule, _ = model.compute_schedule(archives_all["PSO"][0][0][0])
+    plot_gantt(schedule, "random schedule")
     return results, archives_all, base_schedules, convergence_curves
 
 
@@ -154,38 +155,14 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
     return means, stds
 
 
-def grid_search_pso_population(pop_sizes: List[int], runs_per_config: int = 3, model: RCPSPModel = None,
-                               lb: np.ndarray = None, ub: np.ndarray = None, dim: int = None) -> Dict[int, Tuple[float, float]]:
-    results_grid = {}
-    for pop in pop_sizes:
-        best_makespans = []
-        for _ in range(runs_per_config):
-            objectives = [lambda x: multi_objective(x, model)]
-            optimizer = PSO(dim=dim, lb=lb, ub=ub, obj_funcs=objectives,
-                            pop=pop, c2=1.05, w_max=0.9, w_min=0.4,
-                            disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
-            _ = optimizer.run(max_iter=30)
-            archive = optimizer.archive
-            if archive:
-                best = min(archive, key=lambda entry: entry[1][0])[1][0]
-                best_makespans.append(best)
-        if best_makespans:
-            avg = np.mean(best_makespans)
-            std = np.std(best_makespans)
-            results_grid[pop] = (avg, std)
-            logging.info(f"PSO pop size {pop}: Avg best makespan = {avg:.2f}, Std = {std:.2f}")
-    return results_grid
-
-
 if __name__ == '__main__':
-    utils.initialize_seed(4)
+    utils.initialize_seed(14)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    runs = 1
-    use_random_instance = True
+    runs = 2
+    use_random_instance = False
     num_tasks = 20
     POPULATION = 20
     ITERATIONS = 100
-    tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3}) if use_random_instance else get_default_tasks()
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks, population=POPULATION, iterrations=ITERATIONS)
     
@@ -205,9 +182,15 @@ if __name__ == '__main__':
     
     fixed_ref = utils.compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
-    last_archives = [archives_all[alg][-1] for alg in ["MOHHO", "PSO", "MOACO"]]
-    plot_pareto_2d(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
-    plot_all_pareto_graphs(last_archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], fixed_ref)
+    archives = []
+    for alg in archives_all:
+        temp_archive = []
+        for run in archives_all[alg]:
+            for sol, obj in run:
+                temp_archive = utils.update_archive_with_crowding(temp_archive, (sol, obj))
+        archives.append(temp_archive)
+    plot_pareto_2d(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
+    plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
@@ -215,13 +198,5 @@ if __name__ == '__main__':
     
     plot_aggregate_convergence(convergence_curves, "Aggregate Convergence Curves for All Algorithms")
     
-    pop_sizes = [10, 20, 30]
-    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
-    default_tasks = get_default_tasks()
-    model_for_grid = RCPSPModel(default_tasks, workers, {"Developer": 50, "Manager": 75, "Tester": 40})
-    lb_array = np.array([task["min"] for task in default_tasks])
-    ub_array = np.array([task["max"] for task in default_tasks])
-    grid_results = grid_search_pso_population(pop_sizes, runs_per_config=3, model=model_for_grid,
-                                              lb=lb_array, ub=ub_array, dim=len(default_tasks))
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")

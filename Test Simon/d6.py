@@ -1754,10 +1754,10 @@ if __name__ == '__main__':
     #run_unit_tests()
     #grid_search()
     runs = 1 # Number of independent runs for statistical significance
-    use_random_instance = True  # Set True for random instances
+    use_random_instance = False  # Set True for random instances
     num_tasks = 100
-    POP = 50
-    ITER = 300
+    POP = 20
+    ITER = 100
 
     if use_random_instance:
         tasks_for_exp = generate_random_tasks(num_tasks, {"Developer": 10, "Manager": 2, "Tester": 3})

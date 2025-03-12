@@ -366,6 +366,7 @@ def plot_non_dominated_archives_3d(archives: List[List[Tuple[np.ndarray, np.ndar
         group = groups[i]
         if not group:
             continue
+        
         # For each solution, use all three objective values.
         # We assume that the objective_vector is [makespan, total cost, resource utilization].
         # If lower resource utilization is better, and you want to visualize it inverted,
