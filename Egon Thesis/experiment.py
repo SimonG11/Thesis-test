@@ -127,12 +127,11 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     gd_results = {"MOHHO": [], "PSO": [], "MOACO": []}
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
-            print(alg, len(archive))
             gd = compute_generational_distance(archive, true_pareto) if archive and true_pareto.size > 0 else None
             gd_results[alg].append(gd)
     results["Generational_Distance"] = gd_results
-    schedule, _ = model.compute_schedule(archives_all["PSO"][0][0][0])
-    plot_gantt(schedule, "random schedule")
+    schedule, _ = model.compute_schedule(archives_all["MOHHO"][0][11][0])
+    plot_gantt(schedule, "MOHHO schedule index 12")
     return results, archives_all, base_schedules, convergence_curves
 
 
@@ -170,7 +169,6 @@ if __name__ == '__main__':
         json.dump(results, f, indent=4)
     
     means, stds = statistical_analysis(results)
-    plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
     plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Absolute Hypervolume (%)")
     plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
@@ -189,14 +187,11 @@ if __name__ == '__main__':
             for sol, obj in run:
                 temp_archive = utils.update_archive_with_crowding(temp_archive, (sol, obj))
         archives.append(temp_archive)
-    plot_pareto_2d(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
     plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
-    
-    plot_aggregate_convergence(convergence_curves, "Aggregate Convergence Curves for All Algorithms")
     
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")

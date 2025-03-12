@@ -1,9 +1,7 @@
 # objectives.py
 import numpy as np
-from typing import List
 from rcpsp_model import RCPSPModel
 import utils
-from utils import round_half
 
 
 def objective_makespan(x: np.ndarray, model: RCPSPModel) -> float:
