@@ -233,10 +233,14 @@ def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dic
     for algo in ["MOHHO", "PSO", "MOACO"]:
         data[algo] = results[algo]["best_makespan"]
     for algo in algos:
-        arr = np.array(data[algo])
-        means[algo] = np.mean(arr)
-        stds[algo] = np.std(arr)
-        logging.info(f"{algo}: Mean = {means[algo]:.2f}, Std = {stds[algo]:.2f}")
+        if data[algo]:
+            arr = np.array(data[algo])
+            means[algo] = np.mean(arr)
+            stds[algo] = np.std(arr)
+            logging.info(f"{algo}: Mean = {means[algo]:.2f}, Std = {stds[algo]:.2f}")
+        else:
+            means[algo] = 0
+            stds[algo] = 0
     if all(len(data[algo]) > 1 for algo in algos):
         F_stat, p_value = f_oneway(data["Baseline"], data["MOHHO"], data["PSO"], data["MOACO"])
         logging.info(f"ANOVA: F = {F_stat:.2f}, p = {p_value:.4f}")
