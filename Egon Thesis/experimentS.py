@@ -8,9 +8,8 @@ from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed,
                      compute_generational_distance, compute_spread, 
                      compute_spread_3d_by_projections, compute_coverage,
                      statistical_analysis)
-from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs, plot_comparative_bar_chart, plot_aggregate_convergence
-from scipy.stats import f_oneway
-from objectives import objective_makespan, objective_total_cost, objective_neg_utilization, multi_objective
+from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs, plot_aggregate_convergence
+from objectives import multi_objective
 from ericsson_tasks import get_ericsson_tasks
 import utils
 import time
@@ -104,7 +103,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             lambda x: multi_objective(x, model),
             model.tasks, lb_current, ub_current, ant_count, moaco_iter,
             alpha=1.0, beta=2.0, evaporation_rate=0.1,
-            colony_count=(ant_count // 2),
+            colony_count=(2),
             time_limit=time_limit
         )
         results["MOACO"]["runtimes"].append(time.time() - start_time)
@@ -167,7 +166,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     runs = 2
     use_random_instance = False
-    num_tasks = 20
+    num_tasks = 150
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
     TIME_LIMIT = 30  # seconds (1 minute per algorithm run)
