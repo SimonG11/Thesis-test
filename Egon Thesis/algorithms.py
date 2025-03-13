@@ -3,6 +3,7 @@ import random, math
 from typing import List, Tuple, Callable, Optional, Dict, Any
 from utils import chaotic_map_initialization, levy, clip_round_half, discretize_vector, update_archive_with_crowding
 from tqdm import tqdm
+import time
 
 
 # =============================================================================
@@ -12,7 +13,7 @@ from tqdm import tqdm
 # --------------------------- MOHHO Algorithm -------------------------
 def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
-                        search_agents_no: int, max_iter: int) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
+                        search_agents_no: int, max_iter: int, time_limit: float = None) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
     Adaptive MOHHO_with_progress implements a Multi-Objective Harris Hawks Optimization for the RCPSP
     problem with four key enhancements aimed at improving convergence, diversity, and solution quality.
@@ -42,6 +43,10 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
         archive: A list of non-dominated solutions (each a tuple containing a decision vector and its objective vector).
         progress: A list recording progress metrics (best makespan values) per iteration.
     """
+
+    start_time = time.time()
+
+
     # ----- Helper Functions for Normalization -----
     def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         # Scales the columns of a matrix to the [0,1] range.
@@ -74,7 +79,10 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
     no_improvement_count = 0
 
     # Main iterative optimization loop:
-    for t in tqdm(range(max_iter), desc="MOHHO Progress", unit="iter"):
+    for t in tqdm(range(max_iter), desc="MOHHO Progress", unit="iter", leave=False, position=2):
+            # Check if time limit is reached
+        if time_limit is not None and (time.time() - start_time) >= time_limit:
+            break
         # ----- Enhancement 4: Archive Management via Crowding Distance -----
         # Update the archive with the current population.
         for i in range(search_agents_no):
@@ -387,12 +395,16 @@ class PSO:
             obj_val = particle['obj'].copy()
             self.archive = update_archive_with_crowding(self.archive, (pos, obj_val))
 
-    def run(self, max_iter: Optional[int] = None) -> List[float]:
+    def run(self, max_iter: Optional[int] = None, time_limit: float = None) -> List[float]:
+        start_time = time.time()
         # Run the PSO optimization for a specified number of iterations.
         if max_iter is None:
             max_iter = self.max_iter
         convergence: List[float] = []
         for _ in tqdm(range(max_iter), desc="PSO Progress", unit="iter"):
+                    # Check if time limit is reached
+            if time_limit is not None and (time.time() - start_time) >= time_limit:
+                break
             self.move()
             best_ms = min(p['obj'][0] for p in self.swarm)
             convergence.append(best_ms)
@@ -410,6 +422,7 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                    w1: float = 1.0,
                    lambda3: float = 2.0,
                    colony_count: int = 10,
+                   time_limit: float = None
                   ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], List[float]]:
     """
     MOACO_improved implements a Multi-Objective Ant Colony Optimization for the RCPSP problem,
@@ -439,6 +452,10 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
         archive: List of non-dominated solutions (each a tuple of decision and objective vectors).
         progress: List of progress metric values (Tchebycheff scores) per iteration.
     """
+
+    start_time = time.time()
+
+
     def normalize_matrix(mat: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         # Normalize each column of a matrix to the [0,1] interval.
         mat = np.array(mat, dtype=float)
@@ -571,6 +588,8 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
 
     # Main iterative loop for MOACO:
     for iteration in tqdm(range(max_iter), desc="MOACO Progress", unit="iter"):
+        if time_limit is not None and (time.time() - start_time) >= time_limit:
+            break
         colony_solutions = []
         for colony_idx in range(colony_count):
             pheromone = colony_pheromones[colony_idx]
