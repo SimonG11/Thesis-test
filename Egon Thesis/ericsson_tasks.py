@@ -1098,7 +1098,8 @@ def get_ericsson_tasks():
             99
         ],
         "resource": "SA/SD SolArch (JS7) - DM Lead / E2E SA"
-    },
+    }]
+    """,
     {
         "id": 101,
         "task_name": "Data Migration Build - CBEV",
@@ -1616,33 +1617,33 @@ def get_ericsson_tasks():
         ],
         "resource": "SDU ITSysExp (JS6) - LCM Support Team"
     }
-]
+]"""
     resource_pool = {
-    "SA/SD SolArch (JS8) - Solution Architect - DA": 1000,
-    "SDU IntegEngin (JS6) - CBEV Solution Integrator": 1000,
-    "SDU SolArch (JS6) - DevOps Tool Admin": 1000,
-    "SDU SolArch (JS6) - Performance Lead": 1000,
-    "SDU CPM (JS7) - DM CPM": 1000,
-    "MA TestMgr (JS6) - Test lead": 1000,
-    "SDU ITSysExp (JS5) - SW SME": 1000,
-    "SDU IntegEngin (JS6) - CAF IE": 1000,
-    "SDU SwDev (JS6) - CBEV Software Developer": 1000,
-    "SA/SD TechSME (JS6) - NFR SA": 1000,
-    "SDU SolArch (JS6) - Infra or SW Integration SA": 1000,
-    "SDU SolArch (JS6) - DevOps SME": 1000,
-    "SDU SolArch (JS6) - Security Master": 1000,
-    "SA/SD SolArch (JS6) - CBEV Software Developer": 1000,
-    "SDU CPM (JS7) - Rollout Manager": 1000,
-    "SDU IntegEngin (JS4) - ST Test Engineer": 1000,
-    "SDU SolArch (JS5) - RME or RTE": 1000,
-    "SA/SD SolArch (JS7) - DM Lead / E2E SA": 1000,
-    "SDU ITEngTest (JS4) - SIT Manual Tester": 1000,
-    "SA/SD SolArch (JS7) - Performance SA": 1000,
-    "MA TestMgr (JS6) - UAT Test Manager": 1000,
-    "SDU ProgMgr (JS8) - Factory / Delivery Lead": 1000,
-    "MA CPM (JS7) - PMO": 1000,
-    "SDU ITEngTest (JS5) - ST Automation Test Engineer": 1000,
-    "SDU ITSysExp (JS6) - LCM Support Team": 1000
+    "SA/SD SolArch (JS8) - Solution Architect - DA": 10,
+    "SDU IntegEngin (JS6) - CBEV Solution Integrator": 10,
+    "SDU SolArch (JS6) - DevOps Tool Admin": 10,
+    "SDU SolArch (JS6) - Performance Lead": 10,
+    "SDU CPM (JS7) - DM CPM": 10,
+    "MA TestMgr (JS6) - Test lead": 10,
+    "SDU ITSysExp (JS5) - SW SME": 10,
+    "SDU IntegEngin (JS6) - CAF IE": 10,
+    "SDU SwDev (JS6) - CBEV Software Developer": 10,
+    "SA/SD TechSME (JS6) - NFR SA": 10,
+    "SDU SolArch (JS6) - Infra or SW Integration SA": 10,
+    "SDU SolArch (JS6) - DevOps SME": 10,
+    "SDU SolArch (JS6) - Security Master": 10,
+    "SA/SD SolArch (JS6) - CBEV Software Developer": 10,
+    "SDU CPM (JS7) - Rollout Manager": 10,
+    "SDU IntegEngin (JS4) - ST Test Engineer": 10,
+    "SDU SolArch (JS5) - RME or RTE": 10,
+    "SA/SD SolArch (JS7) - DM Lead / E2E SA": 10,
+    "SDU ITEngTest (JS4) - SIT Manual Tester": 10,
+    "SA/SD SolArch (JS7) - Performance SA": 10,
+    "MA TestMgr (JS6) - UAT Test Manager": 10,
+    "SDU ProgMgr (JS8) - Factory / Delivery Lead": 10,
+    "MA CPM (JS7) - PMO": 10,
+    "SDU ITEngTest (JS5) - ST Automation Test Engineer": 10,
+    "SDU ITSysExp (JS6) - LCM Support Team": 10
 }
     resource_cost = {
     "SA/SD SolArch (JS8) - Solution Architect - DA": 118.97,
