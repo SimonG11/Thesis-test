@@ -1,4 +1,3 @@
-# rcpsp_model.py
 from typing import List, Tuple, Dict, Any
 import numpy as np
 from utils import find_earliest_start, convert_hours_to_billable_days

@@ -1,10 +1,7 @@
-# algorithms.py
 import numpy as np
 import random, math
 from typing import List, Tuple, Callable, Optional, Dict, Any
-from utils import chaotic_map_initialization, levy, dominates, round_half, clip_round_half, discretize_vector, update_archive_with_crowding, compute_crowding_distance
-from objectives import multi_objective
-import metrics
+from utils import chaotic_map_initialization, levy, clip_round_half, discretize_vector, update_archive_with_crowding
 from tqdm import tqdm
 import time
 
@@ -12,6 +9,7 @@ import time
 # =============================================================================
 # ----------------------- Algorithm Implementations -------------------------
 # =============================================================================
+
 # --------------------------- MOHHO Algorithm -------------------------
 def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
                         lb: np.ndarray, ub: np.ndarray, dim: int,
@@ -180,6 +178,7 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
             no_improvement_count = 0
 
     return archive, progress
+
 
 # --------------------------- MOPSO Algorithm -------------------------
 class PSO:
@@ -410,6 +409,7 @@ class PSO:
             best_ms = min(p['obj'][0] for p in self.swarm)
             convergence.append(best_ms)
         return convergence
+
 
 # --------------------------- MOACO Algorithm -------------------------
 def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],

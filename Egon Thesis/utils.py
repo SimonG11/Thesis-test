@@ -1,7 +1,11 @@
-# utils.py
 import numpy as np
 import random, math
 from typing import List, Tuple, Dict
+
+
+# Named constants for clarity.
+DAY_HOURS_FULL = 8    # Full working day in billable hours.
+DAY_HOURS_HALF = DAY_HOURS_FULL / 2    # Half working day in billable hours.
 
 
 def initialize_seed(seed: int = 42) -> None:
@@ -237,7 +241,7 @@ def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
     """
     Update the non-dominated archive with a new entry while preserving diversity.
     """
-    sol_new, obj_new = new_entry
+    _, obj_new = new_entry
     dominated_flag = False
     removal_list = []
     for (sol_arch, obj_arch) in archive:
@@ -278,52 +282,6 @@ def get_global_non_dominated(solutions: List[Tuple[int, np.ndarray, np.ndarray]]
     return [solutions[i] for i in range(n) if not dominated[i]]
 
 
-def convertDurationtodays(duration: float) -> float:
-    days = 0 
-    while duration >= 0:
-        if duration > 4:
-            duration -= 8
-            days +=1
-        else:
-            duration -= 4
-            days +=0.5
-    return days
-
-
-def convertDurationtodaysCost(duration: float, alloc: float) -> float:
-    ActualAcualEffort = 0
-    if int(alloc) == alloc:    
-        while duration >= 0:
-            if duration > 4:
-                duration -= 8
-                ActualAcualEffort += 8
-            else:
-                duration -= 4
-                #days +=0.5
-                ActualAcualEffort +=4
-        return ActualAcualEffort * alloc 
-    else:
-        alloc -= 0.5
-        halfduration = duration / 2 
-        while duration >= 0:
-            if duration > 4:
-                duration -= 8
-                ActualAcualEffort += 8
-            else:
-                duration -= 4
-                #days +=0.5
-                ActualAcualEffort +=4
-        ActualAcualEffort *= alloc
-        ActualAcualEffort += ((halfduration // 4)*4)
-        if (halfduration % 4) != 0:
-            ActualAcualEffort += 4
-        return ActualAcualEffort
-
-
-# Named constants for clarity.
-DAY_HOURS_FULL = 8    # Full working day in billable hours.
-DAY_HOURS_HALF = DAY_HOURS_FULL / 2    # Half working day in billable hours.
-
 def convert_hours_to_billable_days(duration: float) -> float:
     """
     Convert a duration (in hours) to billable days.
@@ -348,6 +306,7 @@ def convert_hours_to_billable_days(duration: float) -> float:
         extra = 1.0
     return full_days + extra
 
+
 def compute_billable_hours(duration: float) -> float:
     """
     Convert a duration (in hours) to billable hours.
@@ -359,6 +318,7 @@ def compute_billable_hours(duration: float) -> float:
     full_days = int(billable_days)
     half_day = 1 if (billable_days - full_days) >= 0.5 else 0
     return full_days * DAY_HOURS_FULL + half_day * DAY_HOURS_HALF
+
 
 def compute_billable_cost(duration: float, allocation: float, wage_rate: float) -> float:
     """

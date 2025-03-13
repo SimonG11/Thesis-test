@@ -1,4 +1,3 @@
-# unit_tests.py
 import numpy as np
 import logging
 from metrics import update_archive_with_crowding

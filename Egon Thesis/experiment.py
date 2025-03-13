@@ -1,4 +1,3 @@
-# experiment.py
 import json, logging
 import numpy as np
 from typing import Dict, List, Tuple, Any
@@ -7,10 +6,10 @@ from tasks import get_default_tasks, generate_random_tasks
 from algorithms import MOHHO_with_progress, PSO, MOACO_improved
 from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
                      compute_generational_distance, compute_spread, 
-                     compute_spread_3d_by_projections, compute_coverage)
-from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs, plot_comparative_bar_chart, plot_aggregate_convergence
-from scipy.stats import f_oneway
-from objectives import objective_makespan, objective_total_cost, objective_neg_utilization, multi_objective
+                     compute_spread_3d_by_projections, compute_coverage,
+                     statistical_analysis)
+from visualization import plot_gantt, plot_convergence, plot_all_pareto_graphs
+from objectives import multi_objective
 import utils
 import time
 
@@ -128,32 +127,12 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     gd_results = {"MOHHO": [], "PSO": [], "MOACO": []}
     for alg in ["MOHHO", "PSO", "MOACO"]:
         for archive in archives_all[alg]:
-            print(alg, len(archive))
             gd = compute_generational_distance(archive, true_pareto) if archive and true_pareto.size > 0 else None
             gd_results[alg].append(gd)
     results["Generational_Distance"] = gd_results
-    schedule, _ = model.compute_schedule(archives_all["PSO"][0][0][0])
-    plot_gantt(schedule, "random schedule")
+    schedule, _ = model.compute_schedule(archives_all["MOHHO"][0][11][0])
+    plot_gantt(schedule, "MOHHO schedule index 12")
     return results, archives_all, base_schedules, convergence_curves
-
-
-def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
-    algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
-    means, stds, data = {}, {}, {}
-    data["Baseline"] = results["Baseline"]["makespan"]
-    for algo in ["MOHHO", "PSO", "MOACO"]:
-        data[algo] = results[algo]["best_makespan"]
-    for algo in algos:
-        arr = np.array(data[algo])
-        means[algo] = np.mean(arr)
-        stds[algo] = np.std(arr)
-        logging.info(f"{algo}: Mean = {means[algo]:.2f}, Std = {stds[algo]:.2f}")
-    if all(len(data[algo]) > 1 for algo in algos):
-        F_stat, p_value = f_oneway(data["Baseline"], data["MOHHO"], data["PSO"], data["MOACO"])
-        logging.info(f"ANOVA: F = {F_stat:.2f}, p = {p_value:.4f}")
-    else:
-        logging.warning("Not enough data for ANOVA.")
-    return means, stds
 
 
 if __name__ == '__main__':
@@ -171,7 +150,6 @@ if __name__ == '__main__':
         json.dump(results, f, indent=4)
     
     means, stds = statistical_analysis(results)
-    plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Best Makespan (hours)")
     plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Absolute Hypervolume (%)")
     plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Normalized Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO"]}, "Spread (Diversity)")
@@ -190,14 +168,11 @@ if __name__ == '__main__':
             for sol, obj in run:
                 temp_archive = utils.update_archive_with_crowding(temp_archive, (sol, obj))
         archives.append(temp_archive)
-    plot_pareto_2d(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
     plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
-    
-    plot_aggregate_convergence(convergence_curves, "Aggregate Convergence Curves for All Algorithms")
     
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")
