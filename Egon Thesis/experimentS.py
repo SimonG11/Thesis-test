@@ -6,16 +6,18 @@ from tasks import get_default_tasks, generate_random_tasks
 from algorithms import MOHHO_with_progress, PSO, MOACO_improved
 from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
                      compute_generational_distance, compute_spread, 
-                     compute_spread_3d_by_projections, compute_coverage)
+                     compute_spread_3d_by_projections, compute_coverage,
+                     statistical_analysis)
 from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs, plot_comparative_bar_chart, plot_aggregate_convergence
 from scipy.stats import f_oneway
 from objectives import objective_makespan, objective_total_cost, objective_neg_utilization, multi_objective
+from ericsson_tasks import get_ericsson_tasks
 import utils
 import time
 
 
 def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10,
-                    iterrations: int = 30, population: int = 5, time_limit: float = None
+                    iterrations: int = 30, population: int = 5, time_limit: float = None, ericsson: bool = False
                    ) -> Tuple[Dict[str, Any],
                               Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]],
                               List[Dict[str, Any]],
@@ -25,11 +27,14 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     Each algorithm is run for a fixed wall-clock time (if time_limit is provided).
     Returns results, archives, baseline schedules, and convergence curves.
     """
-    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
-    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    logging.info("Generating tasks...")
-    tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
-    logging.info("Tasks generated")
+    if ericsson:
+        tasks, workers, worker_cost = get_ericsson_tasks()
+    else:
+        workers = {"Developer": 10, "Manager": 2, "Tester": 3}
+        worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
+        logging.info("Generating tasks...")
+        tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
+        logging.info("Tasks generated")
     model = RCPSPModel(tasks, workers, worker_cost)
     dim = len(model.tasks)
     lb_current = np.array([task["min"] for task in model.tasks])
@@ -157,25 +162,6 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     return results, archives_all, base_schedules, convergence_curves
 
 
-def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
-    algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
-    means, stds, data = {}, {}, {}
-    data["Baseline"] = results["Baseline"]["makespan"]
-    for algo in ["MOHHO", "PSO", "MOACO"]:
-        data[algo] = results[algo]["best_makespan"]
-    for algo in algos:
-        arr = np.array(data[algo])
-        means[algo] = np.mean(arr)
-        stds[algo] = np.std(arr)
-        logging.info(f"{algo}: Mean = {means[algo]:.2f}, Std = {stds[algo]:.2f}")
-    if all(len(data[algo]) > 1 for algo in algos):
-        F_stat, p_value = f_oneway(data["Baseline"], data["MOHHO"], data["PSO"], data["MOACO"])
-        logging.info(f"ANOVA: F = {F_stat:.2f}, p = {p_value:.4f}")
-    else:
-        logging.warning("Not enough data for ANOVA.")
-    return means, stds
-
-
 if __name__ == '__main__':
     utils.initialize_seed(14)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -185,10 +171,11 @@ if __name__ == '__main__':
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
     TIME_LIMIT = 30  # seconds (1 minute per algorithm run)
+    ericsson = True
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(
         runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks,
-        population=POPULATION, iterrations=ITERATIONS, time_limit=TIME_LIMIT
+        population=POPULATION, iterrations=ITERATIONS, time_limit=TIME_LIMIT, ericsson=ericsson
     )
     
     with open('experiment_results.json', 'w') as f:
