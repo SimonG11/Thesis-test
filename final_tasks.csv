@@ -1,0 +1,440 @@
+id,task_name,base_effort,min,max,dependencies,resource
+1,,0.0,0,0,[1],"8, 7, 6, 5, 4"
+2,V.FRM.DSItemName,0.0,0,0,[1],"SA/SD, MA, SDU, PDU"
+3,#REF!,0.0,0,0,[1],"ES | Spain, NZ | New Zealand, IN | India, PT | Portugal, TR | Turkey, SE | Sweden, IT | Italy, AE | United Arab Emirates"
+4,,0.0,0,0,[1],"Program Director, PMO, PMO Admin, Rollout Manager, Defect Manager/Triage, Factory / Delivery Lead, Release / Config Manager, Non-functional Lead, Solution Architect - DA, E2E Architecture Lead, E2E  SA Order Capture UI, Solution Architect - Integration, E2E Architect - Order & Fulfillment Management, E2E Architect - Revenue Management & Billing, E2E Rel Assurance SA, Product Manager, DXP SA, DXP developer/IE, EOC SA, EOC developer/IE, ECM SA, ECM developer/IE, EC SA, EC developer/IE, EM SA, EM developer/IE, EB SA, EB developer/IE, BEL SA, BEL developer/IE, CAF SA, CAF IE, CBEV Software Developer, CBEV Solution Integrator, CBEV Solution Architect, Solution Architect (Scrum Lead), ST Test Engineer, ST Automation Test Engineer, RME or RTE, DM CPM, DM Lead / E2E SA, DM Developer, DM Domain SA, DM Software SA, DBA, DevOps SME, DevOps Tool Admin, Infra or SW Integration SA, Infra System Integrator, SW SME, NFR SA, NFR SI, Performance Lead, Performance SA, Perf Dev/Tester, Test lead, SIT Manager, SIT Manual Tester, SIT Automation Tester, UAT Test Manager, UAT Tester, Agile Transformation Lead, Agile Coach, Security Master, Pre-Assesment Team, Other Support, LCM Support Team, Prime-Contract Mgr, Prime-CPM, Prime-Delivery Lead, Prime-EA Lead, Prime-Presales Soln Mgt, Prime-E2E SA Pipeline CICD, Prime-E2E SA CRM, Prime-Business Consultant, Prime-Infra NFR, Prime-Others"
+6,,0.0,0,0,[1],"VAR.DXPSASD, VAR.DXPSASDU, VAR.DXPDeveloperSD, VAR.DXPDeveloperSDU, VAR.EOCSASD, VAR.EOCSASDU, VAR.EOCDeveloperSD, VAR.EOCDeveloperSDU, VAR.ECMSASD, VAR.ECMSASDU, VAR.ECMDeveloperSD, VAR.ECMDeveloperSDU, VAR.ECSAMA, VAR.ECSASDU, VAR.ECDeveloperMA, VAR.ECDeveloperSDU, VAR.EMSAMA, VAR.EMSASDU, VAR.EMDeveloperMA, VAR.EMDeveloperSDU, VAR.EBSASD, VAR.EBSASDU, VAR.EBDeveloperSDU, VAR.STEngSDU, VAR.STAutomationEngSDU, VAR.DMLead, VAR.E2EDMSA, VAR.DMDev, VAR.DMSA, VAR.DMME, VAR.PTLeadSDU, VAR.TestLeadMA, VAR.TestLeadSDU, VAR.SITMgrMA, VAR.SITMgrSDU, VAR.SITManualSDU, VAR.SITAutomationSDU, VAR.UATMgrMA, VAR.UATsupportMA"
+7,Target Solution,0.0,0,0,[1],"SA/SD ProgDir (JS8) - Program Director, MA CPM (JS7) - PMO, SDU CPM (JS7) - PMO Admin, SDU CPM (JS7) - Rollout Manager, SDU CPM (JS7) - Defect Manager/Triage, SA/SD ProgMgr (JS7) - Factory / Delivery Lead, SDU ProgMgr (JS8) - Factory / Delivery Lead, SDU CPM (JS7) - Release / Config Manager, SA/SD SolArch (JS7) - Non-functional Lead, SA/SD SolArch (JS8) - Solution Architect - DA, MA SolArch (JS7) - E2E Architecture Lead, SA/SD SolArch (JS7) - E2E  SA Order Capture UI, SDU SolArch (JS7) - Solution Architect - Integration, SA/SD SolArch (JS7) - E2E Architect - Order & Fulfillment Management, SDU SolArch (JS7) - E2E Architect - Revenue Management & Billing, SDU SolArch (JS7) - E2E Rel Assurance SA, SA/SD SolArch (JS7) - Product Manager, SA/SD SolArch (JS6) - DXP SA, SDU SolArch (JS6) - DXP SA, SA/SD IntegEngin (JS6) - DXP developer/IE, SDU IntegEngin (JS6) - DXP developer/IE, SA/SD SolArch (JS7) - EOC SA, SDU SolArch (JS7) - EOC SA, SA/SD SwDev (JS6) - EOC developer/IE, SDU SwDev (JS6) - EOC developer/IE, SA/SD SolArch (JS7) - ECM SA, SDU SolArch (JS6) - ECM SA, SA/SD SwDev (JS6) - ECM developer/IE, SDU SwDev (JS6) - ECM developer/IE, MA SolArch (JS6) - EC SA, SDU SolArch (JS6) - EC SA, MA IntegEngin (JS5) - EC developer/IE, SDU IntegEngin (JS5) - EC developer/IE, MA SolArch (JS6) - EM SA, SDU SolArch (JS6) - EM SA, MA IntegEngin (JS6) - EM developer/IE, SDU IntegEngin (JS6) - EM developer/IE, SA/SD SolArch (JS6) - EB SA, SDU SolArch (JS6) - EB SA, SDU IntegEngin (JS5) - EB developer/IE, SA/SD SolArch (JS6) - BEL SA, SDU SolArch (JS6) - BEL SA, SDU IntegEngin (JS5) - BEL developer/IE, MA SolArch (JS7) - CAF SA, SA/SD SolArch (JS7) - CAF SA, SDU SolArch (JS7) - CAF SA, MA IntegEngin (JS6) - CAF IE, SA/SD IntegEngin (JS6) - CAF IE, SDU IntegEngin (JS6) - CAF IE, SA/SD SolArch (JS6) - CBEV Software Developer, SA/SD SolArch (JS6) - CBEV Solution Integrator, SDU SwDev (JS6) - CBEV Software Developer, SDU IntegEngin (JS6) - CBEV Solution Integrator, SA/SD SolArch (JS7) - CBEV Solution Architect, SDU SolArch (JS7) - Solution Architect (Scrum Lead), SDU IntegEngin (JS4) - ST Test Engineer, SDU ITEngTest (JS5) - ST Automation Test Engineer, SDU SolArch (JS5) - RME or RTE, SDU CPM (JS7) - DM CPM, SA/SD SolArch (JS7) - DM Lead / E2E SA, SDU SwDev (JS5) - DM Developer, SDU IntegEngin (JS6) - DM Domain SA, SDU SolArch (JS6) - DM Software SA, SDU IntegEngin (JS6) - DBA, SDU SolArch (JS6) - DevOps SME, SDU SolArch (JS6) - DevOps Tool Admin, SDU SolArch (JS6) - Infra or SW Integration SA, SDU IntegEngin (JS5) - Infra System Integrator, SDU ITSysExp (JS5) - SW SME, SA/SD TechSME (JS6) - NFR SA, SDU SolArch (JS6) - NFR SI, SDU SolArch (JS6) - Performance Lead, SA/SD SolArch (JS7) - Performance SA, SDU ITEngTest (JS5) - Perf Dev/Tester, MA TestMgr (JS6) - Test lead, SDU TestMgr (JS6) - Test lead, MA TestMgr (JS6) - SIT Manager, SDU TestMgr (JS6) - SIT Manager, SDU ITEngTest (JS4) - SIT Manual Tester, SDU ITEngTest (JS5) - SIT Automation Tester, MA TestMgr (JS6) - UAT Test Manager, MA ITEngTest (JS5) - UAT Tester, SA/SD SolArch (JS7) - Agile Transformation Lead, SDU SolArch (JS6) - Agile Coach, SDU SolArch (JS7) - Security Master, SDU SolArch (JS6) - Security Master, SA/SD SolArch (JS7) - Pre-Assesment Team, SDU SolArch (JS6) - Pre-Assesment Team, PDU SolArch (JS6) - Other Support, SDU ITSysExp (JS6) - LCM Support Team, MA CPM (JS7) - Prime-Contract Mgr, MA CPM (JS7) - Prime-CPM, MA ProgMgr (JS7) - Prime-Delivery Lead, MA SolArch (JS8) - Prime-EA Lead, SA/SD SolArch (JS7) - Prime-Presales Soln Mgt, SA/SD SolArch (JS7) - Prime-E2E SA Pipeline CICD, SA/SD SolArch (JS7) - Prime-E2E SA CRM, SA/SD Consult (JS7) - Prime-Business Consultant, SA/SD SolArch (JS7) - Prime-Infra NFR, SA/SD SolArch (JS7) - Prime-Others"
+13,        Delivery Management - (RTE),0.0,0,0,[1],Program Manager
+16,        Pre-assesment or workshop preparation,800.0,0,6,[1],SolArch.2
+25,        Solution Architect E2E - Integration or Product Owner,0.0,0,0,[1],ProgMgr.1
+26,        Solution Architect E2E - Product and Order Fulfilment,0.0,0,0,[1],CPM.4
+27,        Solution Architect E2E - Revenue Management and Billing,0.0,0,0,[1],Solution Architect
+28,        Solution Architect E2E - Release Assurance,0.0,0,0,[1],"CPM.4, Solution Architect"
+29,        Solution Architect E2E - Product Manager,0.0,0,0,[1],"CPM.4, Solution Architect"
+31,        Collection of Requirements ( Requirements Gathering workshopts),581.2,0,6,[23],"SolArch.3, SolArch.4"
+32,"        NFR Requirements ( Collection, Analysis, Dimensioning)",108.8,0,2,[23],"SolArch.3, SolArch.5, SolArch.35"
+33,        Collection of Performance Testing Requirement,176.0,0,2,[23],SolArch.38
+34,        Data Migration Strategy and Assessment,160.0,0,2,[38],"SolArch.31, SolArch.46"
+36,        Infrastructure GeoRedundancy and-or Disaster Recovery analysis,335.4,0,2,[38],"SolArch.45, ITSysExp.1"
+38,        Customer Test Strategy and Specifications,718.8,0,6,[38],TestMgr.1
+39,        Performance Test Strategy and Plan,176.0,0,2,[38],"SolArch.6, SolArch.38"
+40,        EVCH (CAF) Assessment and Infra Readiness,0.0,0,0,[1],SolArch.7
+41,    High level Design - UC Based,551.6,0,0,[1],SolArch.8
+42,        HLD - PLM and ILM-Resource Management,30.7,0,1,[46],SolArch.9
+43,        HLD - Operational Support and Readiness,39.5,0,1,[46],SolArch.10
+44,        HLD - Order and Fulfillment,0.0,0,0,[1],Integration Engineer
+45,        HLD - Assurance,0.0,0,0,[1],IntegEngin.1
+46,        HLD - Revenue Management,481.3,0,3,[46],SolArch.11
+47,    High level Designs,0.0,0,0,[1],SolArch.12
+48,        HLD Charging System - Business Configuration,0.0,0,0,[1],SolArch.16
+49,        HLD Charging System - Node based effort,0.0,0,0,[1],"SolArch.16, SolArch.31"
+50,        HLD Integration Architecture,64.0,0,2,[52],"TestMgr.3, ITEngTest.2"
+51,        HLD - Reporting NGCRS,0.0,0,0,[1],"SolArch.33, SolArch.34"
+52,        HLD Service Order and Fulfillment - CPQ,0.0,0,0,[1],SolArch.38
+53,        HLD Product Model - Catalog,384.4,0,3,[54],SolArch.38
+54,        HLD E2E Architecture - Common,161.2,0,2,[52],SolArch.38
+55,        HLD Infrastructure and IP Design,340.5,0,2,[57],"TestMgr.4, ITEngTest.4"
+56,        HLD Non-Functional Design,283.6,0,2,[62],"TestMgr.3, ITEngTest.2"
+57,        HLD CBEV Functional,989.5,0,4,[52],"SwDev.4, SolArch.28"
+59,    Miscellanous D2,0.0,0,0,[1],SolArch.31
+60,        D2 Miscelleanous effort1,0.0,0,0,[1],SolArch.31
+61,Solution Integration,0.0,0,0,[1],SolArch.31
+62,    Low Level Designs,0.0,0,0,[1],SolArch.31
+63,        Low Level Design E2E Common,0.0,0,6,[64],"SolArch.26, SolArch.31"
+65,        LLD CS - Preparation and Solution Analysis,0.0,0,0,[1],"IntegEngin.4, IntegEngin.5"
+66,        LLD CS - Preparation and Solution Analysis - Business Process,0.0,0,0,[1],"IntegEngin.4, IntegEngin.5"
+67,        LLD CS - Preparation and Solution Analysis - Offers business configuration,0.0,0,0,[1],"IntegEngin.6, SolArch.21"
+68,        Low Level Design CS MOP,0.0,0,0,[1],SolArch.31
+69,        Low Level Design EMM,0.0,0,0,[1],IntegEngin.3
+70,        EMM Installation MOP,0.0,0,0,[1],"SwDev.2, SwDev.3"
+71,        EMM Upgradation MOP,0.0,0,0,[1],SolArch.31
+72,        Low Level Design ECM,0.0,0,0,[1],SolArch.31
+73,        Low Level Design DxP,0.0,0,0,[1],SolArch.38
+74,        Low Level Design Catalog,0.0,0,0,[1],TestMgr.1
+75,        Low Level Design Infrastructure,470.4,0,3,[63],"IT Engineering Test, CPM.5, SolArch.31"
+76,        Low Level Design Order Care,0.0,0,0,[1],"SolArch.27, SwDev.4"
+78,        Low Level Design Exposure Layer,0.0,0,0,[1],SolArch.31
+79,        Low Level Design CBEV,0.0,0,6,[64],IntegEngin.11
+80,        Low Level Design EVCH (CAF),0.0,0,0,[1],IntegEngin.11
+81,        Alarms Guide and Counter Solution + Operations - Troubelshooting Guide,320.0,0,6,[86],"IntegEngin.11, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+82,        User Manuals - System Administration Guide,160.0,0,8,"[82, 86]","SolArch.19, SolArch.20, IntegEngin.11"
+83,        Deployment - System Configuration and Application UI,160.0,0,6,[88],"SolArch.19, SolArch.20, IntegEngin.11"
+84,        Low Level Design CBEV RMCA,876.0,0,4,[89],"SolArch.19, SolArch.20, IntegEngin.11"
+85,        Low Level Design - NFR,197.8,0,3,[63],"SolArch.19, SolArch.20"
+86,    Environments setup,0.0,0,0,[1],"SolArch.19, SolArch.20"
+87,"        Site Survey, Deployment Physical Infra and Security",278.4,0,6,"[82, 88]","SolArch.22, IntegEngin.7, IntegEngin.15"
+88,        IaaS: Hypervisor deployment (Including VMs),0.0,0,0,[1],"SolArch.22, IntegEngin.7, IntegEngin.15"
+89,        ECCD deployment and verification,0.0,0,0,[1],"SolArch.17, SolArch.18, IntegEngin.15"
+90,        CaaS: deployment and verification (including addons),0.0,0,0,[1],"SolArch.13, SolArch.14, IntegEngin.15"
+91,        External or Additional elements installation,40.0,0,1,[92],"IntegEngin.15, SolArch.38"
+92,        APPs deployment and verification,0.0,0,0,[1],"SolArch.15, SolArch.16, IntegEngin.15"
+93,        Infrastructure GeoRedundancy and-or Disaster Recovery activities and verification,440.0,0,4,[98],"SolArch.25, IntegEngin.15"
+94,        Infrastructure Backup and Recovery deployment and verification,288.0,2,6,[100],"IntegEngin.10, IntegEngin.15"
+95,"        Infrastructure readiness verification, baby sitting and support",0.0,0,4,[98],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+96,        Internal Environment Setup (Including DevOps infra activities),140.0,0,4,[98],"SolArch.28, SolArch.29, IntegEngin.15"
+97,        Internal Handover,192.0,0,4,[103],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+98,        Platform Verification (Virtual or Containerized),28.0,0,1,[102],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+99,        NELS Server Installation and configuration,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+100,        D3 Miscelleanous effort - Infra,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+101,    DevOps,373.6,0,0,[1],TestMgr.2
+103,        Solution Delpoyment and Integration,311.5,0,6,[108],"SolArch.38, ITEngTest.1"
+104,        D3 Miscelleanous effort - DevOps,0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+105,    Software Upgrade,429.6,0,0,[1],"SolArch.38, ITEngTest.1"
+106,"        Software upgrade - DXP, EOC, ECM",0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+107,"        Software upgrade - EC, EM",0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+108,"        Software upgrade - EB, BEL",0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+109,        Software upgrade - EVCH (CAF),0.0,0,0,[1],Test Manager
+110,        Software upgrade - CBEV,429.6,0,5,[109],"IntegEngin.15, SolArch.38, ITEngTest.1"
+111,    Product Certification,0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+112,        Product Certification Activity,0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+113,        Product Certification Activity-EVCH (CAF),0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+114,        Product Certification Regression Test (Micro+Mini),0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+115,    Security,616.4,0,0,[1],"SolArch.38, ITEngTest.1"
+116,        Application - Security Hardening,185.0,0,5,[109],"IntegEngin.15, SolArch.38, ITEngTest.1, Test Manager"
+117,        Light-Weight Risk Assessment (L-RA) – SI Project Scoping,0.0,0,0,[1],"SolArch.38, ITEngTest.1"
+118,        Security Risk Assessment (Detailed-RA) – SI Project Scoping,100.0,0,5,[109],SolArch.42
+119,        Privacy Impact Assessment (PIA),40.0,0,5,[109],"SolArch.37, SolArch.42"
+120,        Secure Hardening,160.0,0,5,[109],"IntegEngin.15, SolArch.37"
+121,        Vulnerability Analysis (VA),131.4,0,5,[109],"SolArch.36, SolArch.42"
+122,        Secure coding (Based on % of Code Build),0.0,0,0,[1],"SolArch.36, SolArch.37"
+124,        SC - Output Encoding,0.0,0,0,[1],"SolArch.13, SolArch.14, SolArch.16, SolArch.18, ITEngTest.1, Test Manager"
+125,        SC - Authentication and password management,0.0,0,0,[1],"SolArch.20, IntegEngin.7, ITEngTest.1, Test Manager"
+126,        SC - Session Management,0.0,0,0,[1],"SolArch.25, IntegEngin.10, ITEngTest.1, Test Manager"
+127,        SC - Access control,0.0,0,0,[1],"ITEngTest.1, Test Manager"
+128,        SC - Cryptographic Practices,0.0,0,0,[1],"ITEngTest.1, Test Manager"
+130,        SC - Data Protection,0.0,0,0,[1],"IntegEngin.14, TestMgr.1, TestMgr.2"
+131,        SC - Communication Security,0.0,0,0,[1],"TestMgr.1, TestMgr.2"
+132,        SC - System Configuration,0.0,0,0,[1],"TestMgr.1, TestMgr.2"
+134,        SC - File Management,0.0,0,0,[1],Test Manager
+135,        SC - Memory management,0.0,0,0,[1],CPM.7
+136,        SC - General secure coding practice (Based on Scenario Input),0.0,0,0,[1],"CPM.6, CPM.7"
+137,    SW installation & configuration,0.0,0,0,[1],"CPM.6, CPM.7"
+138,        Agile Tool Setup (CDD or GITOPS),100.0,0,5,[109],"IntegEngin.15, Test Manager"
+139,        Test Automation – Tool installation and framework setup (ESSVT or other),23.8,0,6,[109],"IntegEngin.15, CPM.6, CPM.7"
+140,        CBEV: Customer Questionnaire,272.0,0,6,[109],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+141,        Lexie input file generation,64.0,0,6,[109],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+142,        Performance tuning SI,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+143,        Initial Application installation - Manual (NELS server optional),352.2,0,6,[148],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+144,        Solution Monitoring Setup and Configuration,88.0,0,6,[150],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+145,        EOC Workgroup configuration,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+146,        EOC User Configuration,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+147,        Integration with IAM,200.0,0,6,[150],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+148,        User migration for integration with IAM,80.0,0,6,[154],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.15"
+149,        Charging - Hardware Inspection (for all servers),0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+150,        Charging - AF Migration,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+151,        Charging - AIR Installation,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+152,        Charging - cBAM Installation,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+153,        Charging - SDP Installation and configuration,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+154,        Charging - CCN Installation,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+156,        Charging - OCC Installation,0.0,0,0,[1],Test Manager
+157,        Charging - CS-NMT Installation and Integration,0.0,0,0,[1],Test Manager
+158,        Charging - NGVS Installation,0.0,0,0,[1],"SolArch.31, Test Manager"
+159,        Charging - ECMS Installation,0.0,0,0,[1],"Technical SME, ITEngTest.1, Test Manager"
+160,"        Charging - cBCD Installation (ECCD, SWDP)",0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+161,"        Charging - NGCRS Installation, Firmware Upgrade",0.0,0,0,[1],Test Manager
+162,        EVCH (CAF) Installation Service,0.0,0,0,[1],Test Manager
+163,    DxP interfaces,0.0,0,0,[1],Test Manager
+164,        DXP Customized interfaces,0.0,0,0,[1],Test Manager
+165,        DXP interfaces - New or Change,0.0,0,0,[1],Test Manager
+166,    DXP Configuration & Build,0.0,0,0,[1],Test Manager
+167,        DXP Base Setup and Configuration,0.0,0,0,[1],"ITEngTest.1, TestMgr.1"
+168,        FE: UI Extension Components - [CSR TB and Other channels],0.0,0,0,[1],Test Manager
+169,"        BE: JXC, XCAC, CM, CPR, SLCM",0.0,0,0,[1],Test Manager
+170,        Connector,0.0,0,0,[1],Test Manager
+171,    CPQ interfaces,0.0,0,0,[1],Test Manager
+172,        ON Inbound OOB Interface (TMF-663 SC API),0.0,0,0,[1],Test Manager
+173,        ON inbound custom interfaces (EOC Provider),0.0,0,0,[1],Test Manager
+174,        ON outbound custom interfaces (EOC Consumer),0.0,0,0,[1],Test Manager
+175,"        TMF-663 SC API (VP Base, VP structure, VP business logic)",0.0,0,0,[1],Test Manager
+176,    OM interfaces,0.0,0,0,[1],Test Manager
+177,        OM Inbound OOB interfaces (EOC Provider) - AVM based,0.0,0,0,[1],Test Manager
+178,"        OM Inbound TMF 641 SO API, TMF-637 PIM and TMF-638 SIM API",0.0,0,0,[1],Test Manager
+179,        OM outbound TMF 640 interface,0.0,0,0,[1],Test Manager
+180,        OM inbound / outbound custom interfaces (EOC Provider)-AVM Based-interface structure,0.0,0,0,[1],Test Manager
+182,    Order Management,0.0,0,0,[1],"Software Developer, SwDev.1, SolArch.13, SolArch.14"
+183,        UC based EOC build effort creation (PE or PC workflows),0.0,0,0,[1],"Software Developer, SwDev.1, SolArch.13, SolArch.14"
+185,        Traffic Model analysis for performance improvement,0.0,0,0,[1],"Software Developer, SwDev.1, SolArch.13, SolArch.14"
+186,        Optimization activites,0.0,0,0,[1],"Software Developer, SwDev.1, SolArch.13, SolArch.14"
+187,        Jeopardy Management,0.0,0,0,[1],"Software Developer, SwDev.1, SolArch.13, SolArch.14"
+188,        Roll Back Scenario,0.0,0,0,[1],"Software Developer, SwDev.1, SolArch.13, SolArch.14"
+190,    CPQ GUI,0.0,0,0,[1],"SolArch.15, SolArch.16"
+191,        Order Capture Screens,0.0,0,0,[1],"SolArch.15, SolArch.16"
+192,        UI Business Rules Validation,0.0,0,0,[1],"SolArch.15, SolArch.16"
+193,        CPQ Back End - Controler Layer,0.0,0,0,[1],"SolArch.15, SolArch.16"
+195,    OM User Interface,0.0,0,0,[1],"SolArch.15, SolArch.16"
+196,        OM Dashboard Front End,0.0,0,0,[1],"SolArch.15, SolArch.16"
+197,        OM Dashboard Back End,0.0,0,0,[1],"SolArch.15, SolArch.16"
+198,        Project Management VP Front End,0.0,0,0,[1],"SolArch.15, SolArch.16"
+199,        Project Management VP Back End,0.0,0,0,[1],"SolArch.15, SolArch.16"
+201,        ECM Inbound OOB AVM based interfaces (ECM Provider),0.0,0,0,[1],"SolArch.15, SolArch.16"
+202,"        ECM Inbound TMF-679 CB API, TMF-645 SQ API , TMF-633 SCM API (ECM Provider) and TMF-620 SCM API (notification)",0.0,0,0,[1],"SolArch.15, SolArch.16"
+203,"        ECM inbound, outbound AVM based interface structure (ECM Provider)",0.0,0,0,[1],"SolArch.15, SolArch.16"
+204,        ECM variation point TMF APIs outbound interfaces (ECM Consumer),0.0,0,0,[1],"SolArch.15, SolArch.16"
+205,    Catalog,0.0,0,0,[1],"SolArch.15, SolArch.16"
+206,        UC based ECM Configuration Effort,0.0,0,0,[1],"SolArch.15, SolArch.16"
+207,        Product Bundles or Similar Pos,0.0,0,0,[1],"SolArch.15, SolArch.16"
+209,        Product Specification Base Offer,0.0,0,0,[1],"SolArch.15, SolArch.16"
+210,        Product Specification Add On and Optional,0.0,0,0,[1],"SolArch.15, SolArch.16"
+211,        Availability Rules,0.0,0,0,[1],"SolArch.15, SolArch.16"
+212,        Pricing Rules and Charge Types,0.0,0,0,[1],"SolArch.15, SolArch.16"
+214,        CFS,0.0,0,0,[1],"SolArch.15, SolArch.16"
+215,        RFS,0.0,0,0,[1],"SolArch.15, SolArch.16"
+216,        Logical and Physical Resources,0.0,0,0,[1],"SolArch.15, SolArch.16"
+217,        Compatibility Rules,0.0,0,0,[1],"SolArch.15, SolArch.16"
+219,    Product Lifecycle Management,0.0,0,0,[1],"SolArch.17, SolArch.18"
+220,        PLM Processes,0.0,0,0,[1],"SolArch.17, SolArch.18"
+221,    ECM User Interface,0.0,0,0,[1],"SolArch.17, SolArch.18"
+222,        Offer Manager VP Front End,0.0,0,0,[1],"SolArch.17, SolArch.18"
+224,        ECM GUI,0.0,0,0,[1],"SolArch.17, SolArch.18"
+225,    Charging interfaces,0.0,0,0,[1],"SolArch.17, SolArch.18"
+226,        EC Internal Integrations,0.0,0,0,[1],"SolArch.17, SolArch.18"
+227,        Charging- AIR Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+228,        Charging- SDP Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+229,        Charging - CCN Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+230,        Charging - OCC Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+231,        Charging - NGVS Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+232,        Charging - IVR Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+233,        Charging - cBAM Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+234,        Charging - cBCD Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+235,        Charging - NGCRS Integrations (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+236,        Charging - EVCH (CAF) Integration (Node based estimation),0.0,0,0,[1],"SolArch.17, SolArch.18"
+238,        EC External Integrations,0.0,0,0,[1],"SolArch.17, SolArch.18"
+240,        EC Base Setup and Configuration,0.0,0,0,[1],"SolArch.17, SolArch.18"
+241,        Off-Line Rating in CS,0.0,0,0,[1],"SolArch.19, SolArch.20"
+242,        Re-Rating Solution,0.0,0,0,[1],"SolArch.19, SolArch.20"
+243,        Community Charging,0.0,0,0,[1],"SolArch.19, SolArch.20"
+244,"        Announcements (VoLTE or VoWiFi), Notification (PNT), Re-auth Req Tree Config",0.0,0,0,[1],"SolArch.19, SolArch.20"
+245,        Other EC configuration,0.0,0,0,[1],"SolArch.19, SolArch.20"
+246,"        Atomation LCM - Small , Medium, Large",0.0,0,0,[1],"SolArch.19, SolArch.20"
+247,"        Charging - Simulator installation, integration and upgrade",0.0,0,0,[1],"SolArch.19, SolArch.20"
+248,        Charging - TaaS HW and CCD Sanity,0.0,0,0,[1],"SolArch.19, SolArch.20"
+249,        EVCH (CAF) Business Configuration,0.0,0,0,[1],"SolArch.28, SolArch.29"
+250,    Voucher Management.,0.0,0,0,[1],"SolArch.28, SolArch.29"
+251,        Voucher Management System,0.0,0,0,[1],"SolArch.19, SolArch.20"
+253,    EMM interfaces,0.0,0,0,[1],"SolArch.19, SolArch.20"
+254,        EMM OLM BC: Processing configuration - Container or Rating nodes,0.0,0,0,[1],"SolArch.19, SolArch.20"
+255,        EMM OLM BC: Processing configuration - Formatters,0.0,0,0,[1],"SolArch.19, SolArch.20"
+256,        EMM OLM BC: Processing Configuration - Value Routers or Lookup,0.0,0,0,[1],"SolArch.19, SolArch.20"
+257,    Mediation Configuration & Build,0.0,0,0,[1],"SolArch.19, SolArch.20"
+258,        UC based EM Configuration Effort,0.0,0,0,[1],"SolArch.19, SolArch.20"
+259,        5G CDR support by CDF- EM,0.0,0,0,[1],"SolArch.19, SolArch.20"
+260,        EMM FE BC: AVRO or RM-EDM JSOn Decoder or Encoder,0.0,0,0,[1],"SolArch.19, SolArch.20"
+261,        EMM FE BC: Distributor,0.0,0,0,[1],"SolArch.28, SolArch.29"
+262,"        EMM FE BC: Processing Configuration - (Lookups, Duplicate detection, Value routers)",0.0,0,0,[1],"SolArch.19, SolArch.20"
+263,        EMM FE BC: Processing Configuration - Cassandra Logpoint or Lookup,0.0,0,0,[1],"SolArch.19, SolArch.20"
+264,        Miscelleneous Effort - EM,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+265,    EB interfaces,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+266,        EB internal interfaces,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+267,        EB External interfaces,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+268,    Billing Configuration & Build,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+269,        EB Build and Base Setup Configuration,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+271,        UC based Billing Configuration Effort,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+272,        Interconnect Billing - Standard Effort,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+273,        Interconnect Billing - Other Effort,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+274,        EB bill to bill comparsion,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+275,        Collection and Dunning Management workflow,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+276,        Miscelleneous Effort - EB,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+277,    Reporting,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+278,        BO Reporting,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+279,        EOC - ECM Reports,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+281,        CBEV Solution Architects,0.0,0,3,[64],"SolArch.25, SolArch.28"
+282,    CBEV: TPG Configuration and Build,0.0,0,0,[1],SolArch.25
+284,        D3 Miscellaneous effort - TRM,0.0,0,0,[1],SolArch.25
+285,        CHA Configuration and Build,308.9,0,6,[155],"SolArch.25, SolArch.27"
+286,        CHA Configuration and Build - Interfaces,0.0,0,6,[155],"SolArch.25, SolArch.27"
+287,        D3 Miscellaneous effort - CHA,0.0,0,6,[155],"SolArch.25, SolArch.27"
+288,        CIL Configuration and Build,56.0,0,6,[155],"SolArch.25, SolArch.27"
+289,        D3 Miscellaneous effort - CIL,0.0,0,6,[155],"SolArch.25, SolArch.27"
+290,        MSV Configuration & Build (Virtualized),0.0,0,6,[155],"SolArch.25, SolArch.27"
+291,        BAM (Business Application Management (Containerized),80.0,0,6,[155],"SolArch.25, SolArch.27"
+292,        D3 Miscellaneous effort - MSV,0.0,0,6,[155],SolArch.27
+293,        INV Configuration and Build,4.0,0,6,[155],"IntegEngin.10, IntegEngin.11"
+294,        INV External Interface,80.0,0,6,[155],"IntegEngin.10, IntegEngin.11"
+295,        FIN Configuration and Build,40.0,0,6,[155],IntegEngin.11
+296,        FIN External Interface,176.0,0,6,[155],"SolArch.19, SolArch.20, IntegEngin.11"
+297,        COBA Configuration and Build,56.0,0,6,[155],"SolArch.15, SolArch.16, SolArch.27"
+298,        COBA External Interface Configuration,36.0,0,6,[155],SolArch.27
+299,        D3 Miscellaneous effort - COBA,0.0,0,6,[155],"SolArch.27, SolArch.31, SwDev.5"
+300,        EDM Configuration and Build,224.0,0,6,[155],IntegEngin.11
+301,        EPS Configuration and Build,144.0,0,6,[155],"IntegEngin.11, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+302,        D3 Miscellaneous effort - EDM or EPS,0.0,0,6,[155],"IntegEngin.11, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+303,        NTF Configuration and Build (Templates),104.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+304,        NTF Templates (Not in use),0.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+305,        NTF External Interface,8.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+306,        CPM Configuration and Build,0.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+307,        D3 Miscellaneous effort - CPM,0.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+308,        AEL Configuration and Build (Use case),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+309,        AEL External Interface Configuration (Not in use),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+310,        AEL - AEP - Workflow (CAMEL or CAMUNDA) (Not in use),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+311,        BSS API Exposure (BAE) DV (Not in use),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+312,        D3 Miscellaneous effort - AEL,0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+313,        Business Configuration (Not in use),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+314,        RMCA - Product Bundles (Not in use),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+315,        RMCA - Product Offers (Similar Pos),330.3,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+316,        RMCA - Product Offers (Unique Pos),576.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+317,        RMCA - Interface,0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+318,        RMCA - Policy counter configuration (Not in use),0.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+319,        RMCA - CFS (Not in use),0.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+320,        RMCA - RFS (Not in use),0.0,0,6,[155],"SolArch.27, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+321,        RMCA - Logical and Physical Resources (Not in use),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+322,        RMCA - Rules (Not in use) (Not in use),0.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+323,        D3 Miscellaneous effort - RMCA,320.0,0,6,[155],"SolArch.27, IT Engineering Test, CPM.5"
+324,        Custom Modules - Number Portability DB,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+325,        Custom Modules - Customer Management Tool,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+326,        Custom Modules - BT Server,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+327,        Placeholder for other efforts,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+328,    Service Orchestration Assurance,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+329,        SOA Integration,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+330,        SOA Configuration and build,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+331,    Project TR Support,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+332,        Project TR Support for issues,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+333,    Customization,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+334,        Product Customization Efforts (Services),0.0,0,0,[1],"IT Engineering Test, CPM.5"
+335,        Customer Adaptations or Customer Intelligence Efforts,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+336,    System Test,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+337,        ST Triage and Management,400.0,0,3,[315],"IT Engineering Test, CPM.5"
+338,        ST Functional,838.6,0,6,[315],"IT Engineering Test, CPM.5"
+339,"        ST Non-functional (Security, Performance, Penetration Testing)",0.0,0,3,[315],"IT Engineering Test, CPM.5"
+340,        ST Bug Fixing,838.6,0,6,[315],"IntegEngin.11, IT Engineering Test, CPM.5"
+341,        D3 Miscellaneous effort - ST,0.0,0,0,[1],"IT Engineering Test, CPM.5"
+342,    Test Support,0.0,0,0,[1],SolArch.30
+343,        Triage and Management,320.0,0,3,[315],SolArch.30
+344,        Test Support & Bug fixing - DxP,0.0,0,0,[1],SolArch.30
+345,        Test Support & Bug fixing - Charging,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+347,        Test Support & Bug fixing - ECM,0.0,0,0,[1],"SolArch.15, SolArch.16"
+348,        Test Support & Bug fixing - EMM,0.0,0,0,[1],"SolArch.15, SolArch.16"
+350,        Test Support & Bug fixing - BEL,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+352,        Test Support & Bug fixing - CBEV,749.3,0,3,[315],"IntegEngin.11, IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+353,    Miscellanous D3,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+355,        D3 Miscelleanous efforts - EVCH (CAF),0.0,0,0,[1],SolArch.2
+356,        Review or revise LLD as per HLD to ensure traceability,0.0,0,0,[1],"IntegEngin.13, SolArch.32"
+357,        Review or revise Test Cases (created by TAAS),0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+358,        Review or revise Node level configuration as per LLDs,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+359,        Review configurations - Cross component,0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+361,        Review or revise Code with respect to LLDs,0.0,0,0,[1],SolArch.2
+362,        Automated unit tests script,0.0,0,0,[1],"Software Developer, SwDev.1, SolArch.13, SolArch.14"
+363,        Migrate or deploy changes due to cross component configurations,0.0,0,0,[1],"SolArch.19, SolArch.20"
+364,        Contingency for Buco change due to customer products changes during the project design or execution,0.0,0,0,[1],"SolArch.15, SolArch.16"
+365,Data Migration,0.0,0,0,[1],"SolArch.17, SolArch.18"
+366,    DM Project Management,0.0,0,0,[1],"SolArch.22, IntegEngin.7"
+367,        Data Migration PM,0.0,0,3,[64],SolArch.25
+368,        Data Migration DBA and Infrastructure,0.0,0,0,[1],IntegEngin.10
+369,    Data Migration Planification and Analysis,300.0,0,0,[1],"SolArch.28, SolArch.29"
+370,        Data Migration Requirement Gathering,300.0,0,3,[64],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, SolArch.31"
+372,        Data Migration Other Design,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+373,    Data Migration SOLUTION,0.0,0,0,[1],"SolArch.28, SolArch.29"
+374,        Data Migration Build - Tool development,9.6,0,6,[378],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, SwDev.5"
+375,        Data Migration Build - DXP,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+376,        Data Migration Build - Charging,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+377,        Data Migration Build - Order Care,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+378,        Data Migration Build - Billing,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+379,        Data Migration Build - CBEV,0.0,0,6,[378],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, SwDev.5"
+380,        Data Migration Build - SWA (Software Architect),0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+381,    Data Migration Testing,640.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+382,        Data Migration SIT,320.0,0,6,[386],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, SwDev.5"
+383,        Data Migration UAT,320.0,0,6,[389],SwDev.5
+385,    Data Migration Deployment,960.0,0,0,[1],SolArch.33
+386,        Data Migration Dry Run,320.0,0,6,[390],"SwDev.5, IntegEngin.15, Technical SME"
+387,        Data Migration Roll Out,320.0,0,6,[393],SwDev.5
+388,        Data Migration PPS,320.0,0,6,[394],"SwDev.5, SolArch.34, IntegEngin.15"
+389,    Miscellanous D4,0.0,0,0,[1],"SolArch.34, IntegEngin.15"
+390,        D4 Miscelleanous effort1,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+392,Testing,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+393,    SIT Management,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+394,        Test Management ( apart from Project Mgmt. – Governance )  ,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15, TestMgr.1"
+395,    SIT Support,288.5,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+396,        Pre-SIT Analysis,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+397,        E2E Test Support,288.5,0,6,[395],"SolArch.34, SolArch.35, IntegEngin.15, TestMgr.1"
+398,        Defect Retesting,0.0,0,0,[1],IT System Expert
+400,        Test Design,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+401,        Geo-Redundant support by testing Team,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+402,        Go-Live Support,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+404,        Regression Testing,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+405,        Test Automation - POC ( Optional) - GUI,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+406,        Test Automation - POC ( Optional) - API,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+408,        Test Automation - GUI - Analysis and Identification of Test Data,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+409,        Test Automation - API - Analysis and Identification of Test Data,0.0,0,0,[1],"SolArch.34, SolArch.35, IntegEngin.15"
+412,        Test Automation - Scripting - GUI,0.0,0,0,[1],"TestMgr.4, ITEngTest.4, SolArch.39, SolArch.40"
+414,        Test Automation - Scripting - DB,0.0,0,6,[395],"SolArch.41, SolArch.42"
+415,        Test Automation - Scripting - SSH,0.0,0,6,[395],"SolArch.41, SolArch.42"
+416,        Test Automation - Peer review of Script and Feedback Incorporation,0.0,0,6,[395],"SolArch.41, SolArch.42"
+418,        Test Automation - Execution and reporting - GUI,0.0,0,6,[395],"SolArch.41, SolArch.42"
+419,        Test Automation - Execution and reporting - API,0.0,0,6,[395],SolArch.41
+420,        Test Automation - Execution result analysis-GUI,0.0,0,6,[395],"SolArch.41, SolArch.42"
+421,        Test Automation - Execution result analysis-API,0.0,0,6,[395],SolArch.41
+422,        Test Automation – Maintenance,640.0,0,6,[395],"SolArch.41, SolArch.42"
+423,        Internal GeoRedundancy execution,26.9,0,6,[395],"SolArch.36, SolArch.42"
+424,        HA or Failover Testing,186.9,0,6,[395],"SolArch.36, SolArch.42"
+425,        Backup-Restore Testing,121.6,0,6,[395],"SolArch.36, SolArch.42"
+426,        Security Testing,245.8,0,6,[395],"SolArch.36, SolArch.42"
+427,        Alarm Testing,90.9,0,6,[395],"SolArch.36, SolArch.42"
+428,        Monitoring & Logging Testing,75.5,0,6,[395],"SolArch.36, SolArch.42"
+429,        User Management,140.8,0,6,[395],"SolArch.36, SolArch.42"
+430,        Geo-Red Testing,211.2,0,6,[395],"SolArch.36, SolArch.42"
+431,        HW Virtualization TAAS (Other NFR),0.0,0,0,[1],SolArch.42
+432,        D5 EVCH (CAF) Testing Service,0.0,0,0,[1],SolArch.42
+433,        D5 EVCH (CAF) TaaS,0.0,0,0,[1],SolArch.42
+434,    Performance Testing,0.0,0,0,[1],SolArch.42
+435,        PT - Requirement Analysis,0.0,0,0,[1],SolArch.42
+436,        PT - Understanding Application or Architecture,38.4,0,6,[395],"ITEngTest.1, SolArch.42"
+437,        PT - POC (Optional),0.0,0,6,[395],"ITEngTest.1, SolArch.42"
+438,        PT - Environment Setup and Tool Setup Validation,184.0,0,6,[395],"ITEngTest.1, SolArch.42"
+439,        PT - Production Statistics and Understanding KPI or SLA and Create Test Plan,255.7,0,6,[395],"ITEngTest.1, SolArch.42"
+440,        PT - Functional flows understanding of PT Scenarios,276.1,0,6,[395],"ITEngTest.1, SolArch.42"
+441,        PT - Test Data Identification and Validation,925.6,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+442,        PT - Scripting (GUI or API),0.0,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+443,        PT - Load Execution and Monitoring,599.8,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+444,        PT - Stress Execution and Monitoring,212.2,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+445,        PT - Endurance Execution and Monitoring,19.2,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+446,        PT - Result Analysis and Defect Reporting,76.0,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+447,        PT - Final Analysis and Report Submission,204.0,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+448,        PT - Tuning recommendations (Optional),104.4,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+449,        PT - Retest (For every test as needed),64.8,0,6,[395],"ITEngTest.1, TestMgr.1, TestMgr.2"
+450,    User Acceptance Testing.,807.8,0,0,[1],"SolArch.41, SolArch.42"
+451,        User Acceptance Testing-Testing,807.8,0,6,[455],"ITEngTest.4, SolArch.41, SolArch.42"
+453,    Miscellanous D5,0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+454,        D5 Miscelleanous effort (SIT additional support),0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+455,        D5 Miscelleanous effort (UAT additional support),0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+456,Readiness & Go-Live,0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+457,    Solution Deployments,948.9,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+458,        Release or Configuration Manager,520.0,0,6,[458],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+459,        Rollout Manager,120.0,0,6,[458],"CPM.1, SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+460,        Continuous or Manual Deployment (Build and Testing period),0.0,0,6,[458],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+461,        Solution Cut-Over Planning and execution,188.9,0,6,[458],"IntegEngin.11, SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+462,        Handover to Customer Operations Organization,120.0,0,6,[458],"IntegEngin.11, SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+463,        Handover to Ericsson Support Organization,0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+464,        Internal Handover - NFR,0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+465,        Customer Transition: Customer Training,0.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+466,    Post Production Support,720.0,0,0,[1],"SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+467,        Post Production Support (bug fixing+deployment),720.0,0,6,[469],"IntegEngin.11, SolArch.31, TestMgr.3, ITEngTest.2, ITEngTest.3"
+469,        D6 Miscelleanous effort1,0.0,0,0,[1],"SolArch.43, SolArch.44"
+470,        D6 Miscelleanous effort2,0.0,0,0,[1],"TestMgr.1, TestMgr.2"
+472,        EVCH (CAF) PPS (Audit Service),0.0,0,0,[1],"ITEngTest.3, SolArch.41, SolArch.42"
+473,Other Services,0.0,0,0,[1],SolArch.44
+476,        One Pager Review,0.0,0,0,[1],SolArch.5
+477,        BUC preparation,0.0,0,0,[1],SolArch.1
+478,        BUC Review,0.0,0,0,[1],"IntegEngin.14, Technical SME"
+479,        Asset Testing,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5, IntegEngin.14"
+480,        Asset Demo,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+481,        Handover,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+482,        Miscelleanous effort - VACM,0.0,0,0,[1],TestMgr.2
+483,    Life-cycle Management,0.0,0,0,[1],SolArch.31
+485,        LCM - EOC,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+487,        LCM - ECH,0.0,0,0,[1],"IntegEngin.12, IT Engineering Test, SolArch.30, CPM.5"
+488,        LCM - EM,0.0,0,0,[1],IntegEngin.14
+489,        LCM - EB,0.0,0,0,[1],"SolArch.27, SwDev.4"
+490,        LCM - BEL,0.0,0,0,[1],"SolArch.28, SolArch.29"
+493,        LCM - CBEV,0.0,0,6,[469],"ProgMgr.2, SolArch.46"
+494,        Miscelleanous effort - LCM,0.0,0,0,[1],"ProgMgr.2, SolArch.46"
+495,    Prime Key Resource Management,0.0,0,0,[1],"ProgMgr.2, SolArch.46"
+496,        Prime CPM - Contract Manager,0.0,0,0,[1],"ProgMgr.2, SolArch.46"
+497,        Prime CPM - Project Manager,0.0,0,0,[1],SolArch.47
+498,        Prime Delivery Lead,0.0,0,0,[1],SolArch.47
+499,        Prime Chief Enterprise Architect,0.0,0,0,[1],IntegEngin.14
+500,        Prime Presales Solution Mgt,0.0,0,0,[1],"IntegEngin.14, ProgMgr.2, SolArch.46, SolArch.47"
+502,        Prime E2E SA - CRM,0.0,0,0,[1],SolArch.48
+503,        Prime Business Analyst,0.0,0,0,[1],SolArch.48
+504,        Prime E2E SA - INFRA NFR,0.0,0,0,[1],SolArch.48
+505,        Miscelleanous effort - Prime,0.0,0,0,[1],SolArch.48
+506,        Miscelleanous effort - Prime Resource,0.0,0,0,[1],SolArch.48
