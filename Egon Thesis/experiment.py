@@ -141,8 +141,8 @@ if __name__ == '__main__':
     runs = 2
     use_random_instance = False
     num_tasks = 20
-    POPULATION = 100
-    ITERATIONS = 200
+    POPULATION = 10
+    ITERATIONS = 20
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks, population=POPULATION, iterrations=ITERATIONS)
     
@@ -161,6 +161,8 @@ if __name__ == '__main__':
     
     fixed_ref = utils.compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
+
+    # Combining all runs for each algorithm to achieve the combined best pareto front
     archives = []
     for alg in archives_all:
         temp_archive = []
@@ -168,6 +170,7 @@ if __name__ == '__main__':
             for sol, obj in run:
                 temp_archive = utils.update_archive_with_crowding(temp_archive, (sol, obj))
         archives.append(temp_archive)
+    
     plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], fixed_ref)
     
     last_baseline = base_schedules[-1]
