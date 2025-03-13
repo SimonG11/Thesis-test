@@ -649,9 +649,9 @@ def MOACO_improved(objf: Callable[[np.ndarray], np.ndarray],
                 for v in pheromone[i]:
                     pheromone[i][v] *= (1 - current_evap_rate)
         # Deposit pheromones based on archive crowding distance.
+        crowding = normalized_crowding_distance(archive)
+        max_cd = np.max(crowding) if len(crowding) > 0 else 1.0
         for idx, (sol, obj_val) in enumerate(archive):
-            crowding = normalized_crowding_distance(archive)
-            max_cd = np.max(crowding) if len(crowding) > 0 else 1.0
             if not np.isfinite(max_cd) or max_cd <= 0:
                 max_cd = 1.0
             decay_factor = 1.0 - (iteration / max_iter)

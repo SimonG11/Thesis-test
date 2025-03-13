@@ -170,7 +170,7 @@ if __name__ == '__main__':
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
     TIME_LIMIT = 30  # seconds (1 minute per algorithm run)
-    ericsson = True
+    ericsson = False
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(
         runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks,
@@ -199,13 +199,10 @@ if __name__ == '__main__':
             for sol, obj in run:
                 temp_archive = utils.update_archive_with_crowding(temp_archive, (sol, obj))
         archives.append(temp_archive)
-    plot_pareto_2d(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], ref_point=fixed_ref)
     plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO"], ['o', '^', 's'], ['blue', 'red', 'green'], fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
     plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
-    
-    plot_aggregate_convergence(convergence_curves, "Aggregate Convergence Curves for All Algorithms")
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")
