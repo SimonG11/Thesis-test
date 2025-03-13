@@ -160,7 +160,7 @@ def get_ericsson_tasks():
         "min": 1,
         "max": 3,
         "dependencies": [
-            57
+            14
         ],
         "resource": "SDU IntegEngin (JS6) - CBEV Solution Integrator"
     },
@@ -1095,7 +1095,7 @@ def get_ericsson_tasks():
         "min": 1,
         "max": 6,
         "dependencies": [
-            400
+            99
         ],
         "resource": "SA/SD SolArch (JS7) - DM Lead / E2E SA"
     },
@@ -1106,7 +1106,7 @@ def get_ericsson_tasks():
         "min": 1,
         "max": 6,
         "dependencies": [
-            400
+            100
         ],
         "resource": "SA/SD SolArch (JS7) - DM Lead / E2E SA"
     },
@@ -1117,7 +1117,7 @@ def get_ericsson_tasks():
         "min": 1,
         "max": 6,
         "dependencies": [
-            408
+            100
         ],
         "resource": "SA/SD SolArch (JS7) - DM Lead / E2E SA"
     },

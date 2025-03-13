@@ -10,21 +10,25 @@ from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed,
                      statistical_analysis)
 from visualization import plot_gantt, plot_convergence, plot_all_pareto_graphs
 from objectives import multi_objective
+from ericsson_tasks import get_ericsson_tasks
 import utils
-import time
+import time 
 
 
-def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10, iterrations: int = 30, population: int = 5
+def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10, iterrations: int = 30, population: int = 5, ericsson: bool = False
                    ) -> Tuple[Dict[str, Any], Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]], List[Dict[str, Any]], Dict[str, List[List[float]]]]:
     """
     Run experiments for MOHHO, PSO, MOACO, and a baseline.
     Returns results, archives, baseline schedules, and convergence curves.
     """
-    workers = {"Developer": 10, "Manager": 2, "Tester": 3}
-    worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
-    logging.info("Generating tasks...")
-    tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
-    logging.info("Tasks generated")
+    if ericsson:
+        tasks, workers, worker_cost = get_ericsson_tasks()
+    else:
+        workers = {"Developer": 10, "Manager": 2, "Tester": 3}
+        worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
+        logging.info("Generating tasks...")
+        tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
+        logging.info("Tasks generated")
     model = RCPSPModel(tasks, workers, worker_cost)
     dim = len(model.tasks)
     lb_current = np.array([task["min"] for task in model.tasks])
@@ -141,10 +145,11 @@ if __name__ == '__main__':
     runs = 2
     use_random_instance = False
     num_tasks = 20
-    POPULATION = 10
-    ITERATIONS = 20
+    POPULATION = 50
+    ITERATIONS = 10
+    ericsson = True
 
-    results, archives_all, base_schedules, convergence_curves = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks, population=POPULATION, iterrations=ITERATIONS)
+    results, archives_all, base_schedules, convergence_curves = run_experiments(runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks, population=POPULATION, iterrations=ITERATIONS, ericsson=ericsson)
     
     with open('experiment_results.json', 'w') as f:
         json.dump(results, f, indent=4)
