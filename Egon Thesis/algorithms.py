@@ -19,6 +19,8 @@ def MOHHO_with_progress(objf: Callable[[np.ndarray], np.ndarray],
     problem with four key enhancements aimed at improving convergence, diversity, and solution quality.
     The search moves are restricted to half-step increments.
 
+    original code: https://mdm.wzu.edu.cn/HHO.html
+
     Enhancements and Scientific Justifications:
       1. Chaotic Initialization:
          - Initializes the population using a logistic chaotic map to ensure a diverse and wide spread of

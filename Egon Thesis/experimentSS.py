@@ -220,8 +220,8 @@ if __name__ == '__main__':
     utils.initialize_seed(14)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     runs = 2
-    use_random_instance = False
-    num_tasks = 20
+    use_random_instance = True
+    num_tasks = 50
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
     TIME_LIMIT = 180  # seconds (1 minute per algorithm run)
