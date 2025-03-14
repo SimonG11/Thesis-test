@@ -29,7 +29,7 @@ def clip_round_half(x: float, lb: float, ub: float) -> float:
 
 def discretize_vector(vec: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> np.ndarray:
     """Discretize each element of a vector to half steps within given bounds."""
-    return np.array([clip_round_half(val, lb[i], ub[i]) for i, val in enumerate(vec)])
+    return np.round(np.clip(vec, lb, ub) * 2) / 2
 
 
 def dominates(obj_a: np.ndarray, obj_b: np.ndarray, epsilon: float = 1e-6) -> bool:
@@ -46,24 +46,10 @@ def dominates(obj_a: np.ndarray, obj_b: np.ndarray, epsilon: float = 1e-6) -> bo
 
 
 def get_true_pareto_points(points: np.ndarray, epsilon: float = 1e-6) -> np.ndarray:
-    """
-    Given a set of points (each row is an objective vector), return only the non-dominated points.
-    
-    Parameters:
-      points: A NumPy array of shape (n_points, n_objectives).
-      epsilon: Tolerance for comparing objectives.
-    
-    Returns:
-      A NumPy array containing only the non-dominated (true Pareto front) points.
-    """
-    n = points.shape[0]
-    dominated = np.zeros(n, dtype=bool)
-    for i in range(n):
-        for j in range(n):
-            if i != j and dominates(points[j], points[i], epsilon):
-                dominated[i] = True
-                break
-    return points[~dominated]
+    from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
+    nds = NonDominatedSorting()
+    nondom_indices = nds.do(points, only_non_dominated_front=True)
+    return points[nondom_indices]
 
 
 def levy(dim: int) -> np.ndarray:
@@ -120,13 +106,10 @@ def chaotic_map_initialization(lb: np.ndarray, ub: np.ndarray, dim: int, n_agent
     Initialize the population using a logistic chaotic map.
     """
     r = 4.0
-    population = np.zeros((n_agents, dim))
-    for i in range(n_agents):
-        x = np.random.rand(dim)
-        for _ in range(10):
-            x = r * x * (1 - x)
-        population[i, :] = lb + x * (ub - lb)
-    return population
+    x = np.random.rand(n_agents, dim)
+    for _ in range(10):
+        x = r * x * (1 - x)
+    return lb + x * (ub - lb)
 
 
 def compute_extremes(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
@@ -146,66 +129,52 @@ def compute_extremes(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
         A list of three tuples: [(ideal0, upper0), (ideal1, upper1), (ideal2, upper2)],
         where ideal_m is the lower (ideal) bound for objective m and upper_m is the upper bound.
     """
-    # Collect all objective vectors for cost and makespan (objectives 0 and 1).
-    all_objs = []
-    for archive in archives:
-        for _, obj in archive:
-            all_objs.append(obj)
-    if not all_objs:
+    try:
+        all_objs = np.concatenate([np.array([obj for _, obj in archive]) for archive in archives if archive])
+    except ValueError:
         raise ValueError("No objective data found in archives.")
     
-    all_objs = np.array(all_objs)  # shape (N, 3)
-    
     extremes = []
-    # For objective 0 (cost) and objective 1 (makespan)
     for m in range(2):
         observed_min = np.min(all_objs[:, m])
         observed_max = np.max(all_objs[:, m])
         range_val = observed_max - observed_min
-        # Extend the bounds by margin * range
         ideal_bound = observed_min - margin * range_val
         upper_bound = observed_max + margin * range_val
         extremes.append((ideal_bound, upper_bound))
     
-    # For objective 2 (resource utilization, which is negated), we fix extremes.
     extremes.append((-1, 0))
-
-    new_extremes = {(0,1) : ((extremes[0][0], extremes[1][1]), (extremes[0][1], extremes[1][1])),
-                   (0,2) : ((extremes[0][0], extremes[2][0]),(extremes[0][1], extremes[2][1])),
-                   (1,2) : ((extremes[1][0], extremes[2][0]),(extremes[1][1], extremes[2][0]))
-                   }
+    
+    new_extremes = {
+        (0,1): ((extremes[0][0], extremes[1][1]), (extremes[0][1], extremes[1][1])),
+        (0,2): ((extremes[0][0], extremes[2][0]), (extremes[0][1], extremes[2][1])),
+        (1,2): ((extremes[1][0], extremes[2][0]), (extremes[1][1], extremes[2][0]))
+    }
     
     return new_extremes
+
 
 
 def compute_fixed_reference(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
     """
     Compute a fixed reference point based on the union of all solution archives.
     """
-    union_archive = []
-    for alg in archives_all:
-        for archive in archives_all[alg]:
-            union_archive.extend(archive)
+    union_archive = [entry for alg in archives_all for archive in archives_all[alg] for entry in archive]
     if not union_archive:
         raise ValueError("No archive entries found.")
     objs = np.array([entry[1] for entry in union_archive])
-    ref_point = np.max(objs, axis=0)
-    return ref_point
+    return np.max(objs, axis=0)
 
 
 def compute_combined_ideal(archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]]) -> np.ndarray:
     """
     Compute the combined ideal point from multiple archives.
     """
-    union_archive = []
-    for alg in archives_all:
-        for archive in archives_all[alg]:
-            union_archive.extend(archive)
+    union_archive = [entry for alg in archives_all for archive in archives_all[alg] for entry in archive]
     if not union_archive:
         raise ValueError("No archive entries found.")
     objs = np.array([entry[1] for entry in union_archive])
-    ideal = np.min(objs, axis=0)
-    return ideal
+    return np.min(objs, axis=0)
 
 
 def same_entry(entry1: Tuple[np.ndarray, np.ndarray], entry2: Tuple[np.ndarray, np.ndarray]) -> bool:
@@ -223,14 +192,13 @@ def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> n
     num_objs = objs.shape[1]
     distances = np.zeros(len(archive))
     for m in range(num_objs):
-        sorted_indices = np.argsort(objs[:, m])
-        distances[sorted_indices[0]] = distances[sorted_indices[-1]] = float('inf')
-        m_values = objs[sorted_indices, m]
+        sorted_idx = np.argsort(objs[:, m])
+        distances[sorted_idx[0]] = distances[sorted_idx[-1]] = float('inf')
+        m_values = objs[sorted_idx, m]
         m_range = m_values[-1] - m_values[0]
         if m_range == 0:
             continue
-        for i in range(1, len(archive) - 1):
-            distances[sorted_indices[i]] += (m_values[i+1] - m_values[i-1]) / m_range
+        distances[sorted_idx[1:-1]] += (m_values[2:] - m_values[:-2]) / m_range
     return distances
 
 
@@ -278,16 +246,11 @@ def get_global_non_dominated(solutions: List[Tuple[int, np.ndarray, np.ndarray]]
     
     Returns a list of solutions that are non-dominated globally.
     """
-    n = len(solutions)
-    dominated = [False] * n
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                # Compare the objective vectors.
-                if dominates(solutions[j][2], solutions[i][2], epsilon):
-                    dominated[i] = True
-                    break
-    return [solutions[i] for i in range(n) if not dominated[i]]
+    from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
+    nds = NonDominatedSorting()
+    objs = np.array([sol[2] for sol in solutions])
+    nondom_indices = nds.do(objs, only_non_dominated_front=True)
+    return [solutions[i] for i in nondom_indices]
 
 
 def convert_hours_to_billable_days(duration: float) -> float:
