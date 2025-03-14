@@ -236,7 +236,7 @@ def compute_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]]) -> n
 
 def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
                                  new_entry: Tuple[np.ndarray, np.ndarray],
-                                 max_archive_size: int = 50,
+                                 max_archive_size: int = 100,
                                  epsilon: float = 1e-6) -> List[Tuple[np.ndarray, np.ndarray]]:
     """
     Update the non-dominated archive with a new entry while preserving diversity.
