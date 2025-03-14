@@ -351,3 +351,19 @@ def compute_billable_cost(duration: float, allocation: float, wage_rate: float) 
             return full_workers * full_cost + full_cost / 2
         else:
             return full_workers * full_cost
+
+
+def seconds_to_hms(seconds: int) -> str:
+    """
+    Convert an integer number of seconds into a string formatted as "hh:mm:ss".
+
+    Parameters:
+        seconds (int): The total number of seconds.
+
+    Returns:
+        str: The time formatted as "hh:mm:ss".
+    """
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{int(hours):02d}:{int(minutes):02d}:{int(secs):02d}"
+

@@ -19,6 +19,8 @@ from tqdm import tqdm
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.optimize import minimize
 from pymoo.core.problem import Problem
+from pymoo.termination import get_termination
+
 
 def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks: int = 10,
                     iterrations: int = 30, population: int = 5, time_limit: float = None, ericsson: bool = False
@@ -70,6 +72,9 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     base_schedule, base_ms = model.baseline_allocation()
     results["Baseline"]["makespan"].append(base_ms)
     base_schedules.append(base_schedule)
+
+    time_limit_formated = utils.seconds_to_hms(time_limit)
+    termination = get_termination("time", time_limit_formated)
     # Outer progress bar: overall experiment runs
     for run in tqdm(range(runs), desc="Experiment Runs", position=0, leave=True):
         tqdm.write(f"Starting run {run+1}/{runs}...")
@@ -80,16 +85,13 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             # -------------------- MOHHO --------------------
             algo_bar.set_description("MOHHO")
             start_time = time.time()
-            archive_hho, conv_hho = MOHHO(lambda x: multi_objective(x, model),
+            archive_hho, _ = MOHHO(lambda x: multi_objective(x, model),
                                                         lb_current, ub_current, dim,
                                                         population, iterrations,
                                                         time_limit=time_limit)
             runtime = time.time() - start_time
             results["MOHHO"]["runtimes"].append(runtime)
-            best_ms_hho = min(archive_hho, key=lambda entry: entry[1][0])[1][0] if archive_hho else None
-            results["MOHHO"]["best_makespan"].append(best_ms_hho)
             archives_all["MOHHO"].append(archive_hho)
-            convergence_curves["MOHHO"].append(conv_hho)
             algo_bar.write("MOHHO Done")
             algo_bar.update(1)
             
@@ -100,21 +102,18 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                             pop=population, c2=2, w_max=0.9, w_min=0.4,
                             disturbance_rate_min=0.1, disturbance_rate_max=0.2, jump_interval=75)
             start_time = time.time()
-            conv_pso = optimizer.run(max_iter=iterrations, time_limit=time_limit)
+            _ = optimizer.run(max_iter=iterrations, time_limit=time_limit)
             runtime = time.time() - start_time
             results["PSO"]["runtimes"].append(runtime)
             archive_pso = optimizer.archive
-            best_ms_pso = min(archive_pso, key=lambda entry: entry[1][0])[1][0] if archive_pso else None
-            results["PSO"]["best_makespan"].append(best_ms_pso)
             archives_all["PSO"].append(archive_pso)
-            convergence_curves["PSO"].append(conv_pso)
             algo_bar.write("PSO Done")
             algo_bar.update(1)
             
             # -------------------- MOACO --------------------
             algo_bar.set_description("MOACO")
             start_time = time.time()
-            archive_moaco, conv_moaco = MOACO(
+            archive_moaco, _ = MOACO(
                 lambda x: multi_objective(x, model),
                 model.tasks, lb_current, ub_current, population, iterrations,
                 alpha=1.0, beta=2.0, evaporation_rate=0.1,
@@ -123,19 +122,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             )
             runtime = time.time() - start_time
             results["MOACO"]["runtimes"].append(runtime)
-            best_ms_moaco = min(archive_moaco, key=lambda entry: entry[1][0])[1][0] if archive_moaco else None
-            results["MOACO"]["best_makespan"].append(best_ms_moaco)
-            results["MOACO"]["coverage"].append(compute_coverage(archive_moaco, archive_hho + archive_pso))
-            results["MOHHO"]["coverage"].append(compute_coverage(archive_hho, archive_moaco + archive_pso))
-            results["PSO"]["coverage"].append(compute_coverage(archive_pso, archive_hho + archive_moaco))
-            results["MOACO"]["coverage_hho"].append(compute_coverage(archive_moaco, archive_hho))
-            results["MOHHO"]["coverage_aco"].append(compute_coverage(archive_hho, archive_moaco))
-            results["PSO"]["coverage_hho"].append(compute_coverage(archive_pso, archive_hho))
-            results["MOACO"]["coverage_pso"].append(compute_coverage(archive_moaco, archive_pso))
-            results["MOHHO"]["coverage_pso"].append(compute_coverage(archive_hho, archive_pso))
-            results["PSO"]["coverage_aco"].append(compute_coverage(archive_pso, archive_moaco))
             archives_all["MOACO"].append(archive_moaco)
-            convergence_curves["MOACO"].append(conv_moaco)
             algo_bar.write("MOACO Done")
             algo_bar.update(1)
             
@@ -159,24 +146,33 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                         F.append(multi_objective(x, self.model))
                     out["F"] = np.array(F)
             
+            
             problem = RCPSPProblem(model, lb_current, ub_current)
             algorithm = NSGA2(pop_size=population)
             start_time = time.time()
             res = minimize(problem,
                            algorithm,
-                           termination=('n_gen', iterrations),
+                           termination,
                            seed=14,
                            verbose=False)
             nsga_runtime = time.time() - start_time
             archive_nsga = [(sol, obj) for sol, obj in zip(res.X, res.F)]
             archive_nsga = utils.remove_excess_solutions_with_crowding_distance(archive=archive_nsga, max_archive_size=100)
-            best_ms_nsga = min(archive_nsga, key=lambda entry: entry[1][0])[1][0] if archive_nsga else None
             results["NSGAII"]["runtimes"].append(nsga_runtime)
-            results["NSGAII"]["best_makespan"].append(best_ms_nsga)
             archives_all["NSGAII"].append(archive_nsga)
-            convergence_curves["NSGAII"].append([])  # NSGA-II convergence curve not recorded here
             algo_bar.write("NSGA-II Done")
             algo_bar.update(1)
+            results["MOACO"]["coverage"].append(compute_coverage(archive_moaco, archive_hho + archive_pso + archive_nsga))
+            results["MOHHO"]["coverage"].append(compute_coverage(archive_hho, archive_moaco + archive_pso + archive_nsga))
+            results["PSO"]["coverage"].append(compute_coverage(archive_pso, archive_hho + archive_moaco + archive_nsga))
+            results["NSGAII"]["coverage"].append(compute_coverage(archive_nsga, archive_hho + archive_moaco + archive_pso))
+            
+            results["MOACO"]["coverage_hho"].append(compute_coverage(archive_moaco, archive_hho))
+            results["MOHHO"]["coverage_aco"].append(compute_coverage(archive_hho, archive_moaco))
+            results["PSO"]["coverage_hho"].append(compute_coverage(archive_pso, archive_hho))
+            results["MOACO"]["coverage_pso"].append(compute_coverage(archive_moaco, archive_pso))
+            results["MOHHO"]["coverage_pso"].append(compute_coverage(archive_hho, archive_pso))
+            results["PSO"]["coverage_aco"].append(compute_coverage(archive_pso, archive_moaco))
         
     fixed_ref = utils.compute_fixed_reference(archives_all)
     global_lower_bound = utils.compute_combined_ideal(archives_all)
@@ -223,7 +219,7 @@ if __name__ == '__main__':
     num_tasks = 10
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
-    TIME_LIMIT = 10  # seconds (1 minute per algorithm run)
+    TIME_LIMIT = 30  # seconds (1 minute per algorithm run)
     ericsson = False
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(
@@ -235,7 +231,6 @@ if __name__ == '__main__':
         json.dump(results, f, indent=4)
     
     means, stds = statistical_analysis(results)
-    plot_convergence({alg: results[alg]["best_makespan"] for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]}, "Best Makespan (hours)")
     plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]}, "Absolute Hypervolume (%)")
     plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]}, "Normalized Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]}, "Spread (Diversity)")
@@ -257,7 +252,6 @@ if __name__ == '__main__':
         archives.append(temp_archive)
     
 
-    plot_pareto_2d(archives, ["MOHHO", "PSO", "MOACO", "NSGAII"], ['o', '^', 's', 'd'], ['blue', 'red', 'green', 'purple'], ref_point=fixed_ref)
     plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO", "NSGAII"], ['o', '^', 's', 'd'], ['blue', 'red', 'green', 'purple'], fixed_ref)
     
     last_baseline = base_schedules[-1]
