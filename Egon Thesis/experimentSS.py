@@ -53,15 +53,16 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     results = {
         "MOHHO": {"normalized_hypervolume": [], "absolute_hypervolume": [],
                   "spread": [], "multi_objective_spread": [], "coverage": [], "coverage_pso": [],
-                  "coverage_aco": [], "runtimes": []},
+                  "coverage_aco": [], "coverage_nsga": [], "runtimes": []},
         "PSO": {"normalized_hypervolume": [], "absolute_hypervolume": [],
                 "spread": [], "multi_objective_spread": [], "coverage": [], "coverage_hho": [],
-                "coverage_aco": [], "runtimes": []},
+                "coverage_aco": [], "coverage_nsga": [], "runtimes": []},
         "MOACO": {"normalized_hypervolume": [], "absolute_hypervolume": [],
                   "spread": [], "multi_objective_spread": [], "coverage": [], "coverage_pso": [],
-                  "coverage_hho": [], "runtimes": []},
+                  "coverage_hho": [], "coverage_nsga": [], "runtimes": []},
         "NSGAII": {"normalized_hypervolume": [], "absolute_hypervolume": [],
-                   "spread": [], "multi_objective_spread": [], "coverage": [], "runtimes": []}
+                   "spread": [], "multi_objective_spread": [], "coverage": [], "coverage_pso": [],
+                  "coverage_hho": [], "coverage_aco": [], "runtimes": []}
     }
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {
         "MOHHO": [], "PSO": [], "MOACO": [], "NSGAII": []
@@ -152,7 +153,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                            algorithm,
                            termination,
                            seed=14,
-                           verbose=False)
+                           verbose=True)
             nsga_runtime = time.time() - start_time
             archive_nsga = [(sol, obj) for sol, obj in zip(res.X, res.F)]
             archive_nsga = utils.remove_excess_solutions_with_crowding_distance(archive=archive_nsga, max_archive_size=100)
@@ -211,7 +212,10 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]:
         for archive in archives_all[alg]:
             logging.info(f"{alg} archive size: {len(archive)}")
-            gd = compute_generational_distance(archive, true_pareto) if archive and true_pareto.size > 0 else None
+            if archive != []:
+                gd = compute_generational_distance(archive, true_pareto) if archive and true_pareto.size > 0 else None
+            else:
+                gd = -1
             gd_results[alg].append(gd)
     results["Generational_Distance"] = gd_results
     
@@ -221,15 +225,15 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
 
 
 if __name__ == '__main__':
-    utils.initialize_seed(14)
+    utils.initialize_seed(69)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     runs = 1
     use_random_instance = True
-    num_tasks = 10
+    num_tasks = 20
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
-    TIME_LIMIT = 5  # seconds (1 minute per algorithm run)
-    ericsson = False
+    TIME_LIMIT = 30  # seconds (1 minute per algorithm run)
+    ericsson = True
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(
         runs=runs, use_random_instance=use_random_instance, num_tasks=num_tasks,
