@@ -3,7 +3,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Any
 from rcpsp_model import RCPSPModel
 from tasks import get_default_tasks, generate_random_tasks
-from algorithms import MOHHO_with_progress, PSO, MOACO_improved
+from algorithmsS import MOHHO_with_progress, PSO, MOACO_improved
 from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
                      compute_generational_distance, compute_spread, 
                      compute_spread_3d_by_projections, compute_coverage,
