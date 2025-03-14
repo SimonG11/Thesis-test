@@ -3,7 +3,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Any
 from rcpsp_model import RCPSPModel
 from tasks import get_default_tasks, generate_random_tasks
-from algorithmsS import MOHHO_with_progress, PSO, MOACO_improved
+from algorithmsS import MOHHO, PSO, MOACO
 from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
                      compute_generational_distance, compute_spread, 
                      compute_spread_3d_by_projections, compute_coverage,
@@ -82,7 +82,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             # -------------------- MOHHO --------------------
             algo_bar.set_description("MOHHO")
             start_time = time.time()
-            archive_hho, conv_hho = MOHHO_with_progress(lambda x: multi_objective(x, model),
+            archive_hho, conv_hho = MOHHO(lambda x: multi_objective(x, model),
                                                         lb_current, ub_current, dim,
                                                         population, iterrations,
                                                         time_limit=time_limit)
@@ -99,8 +99,8 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             algo_bar.set_description("PSO")
             objectives = [lambda x: multi_objective(x, model)]
             optimizer = PSO(dim=dim, lb=lb_current, ub=ub_current, obj_funcs=objectives,
-                            pop=population, c2=1.05, w_max=0.9, w_min=0.4,
-                            disturbance_rate_min=0.1, disturbance_rate_max=0.3, jump_interval=20)
+                            pop=population, c2=2, w_max=0.9, w_min=0.4,
+                            disturbance_rate_min=0.1, disturbance_rate_max=0.2, jump_interval=75)
             start_time = time.time()
             conv_pso = optimizer.run(max_iter=iterrations, time_limit=time_limit)
             runtime = time.time() - start_time
@@ -116,11 +116,11 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             # -------------------- MOACO --------------------
             algo_bar.set_description("MOACO")
             start_time = time.time()
-            archive_moaco, conv_moaco = MOACO_improved(
+            archive_moaco, conv_moaco = MOACO(
                 lambda x: multi_objective(x, model),
                 model.tasks, lb_current, ub_current, population, iterrations,
                 alpha=1.0, beta=2.0, evaporation_rate=0.1,
-                colony_count=(population // 2),
+                colony_count=(2),
                 time_limit=time_limit
             )
             runtime = time.time() - start_time
@@ -219,7 +219,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
 if __name__ == '__main__':
     utils.initialize_seed(14)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    runs = 2
+    runs = 1
     use_random_instance = True
     num_tasks = 50
     POPULATION = 100
