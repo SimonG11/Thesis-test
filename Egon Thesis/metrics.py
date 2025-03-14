@@ -226,25 +226,4 @@ def compute_average_distance_to_ideal(archive: List[Tuple[np.ndarray, np.ndarray
     return np.mean(distances)
 
 
-def statistical_analysis(results: Dict[str, Any]) -> Tuple[Dict[str, float], Dict[str, float]]:
-    algos = ["MOHHO", "PSO", "MOACO", "Baseline"]
-    means, stds, data = {}, {}, {}
-    data["Baseline"] = results["Baseline"]["makespan"]
-    for algo in ["MOHHO", "PSO", "MOACO"]:
-        data[algo] = results[algo]["best_makespan"]
-    for algo in algos:
-        try:
-            arr = np.array(data[algo])
-            means[algo] = np.mean(arr)
-            stds[algo] = np.std(arr)
-            logging.info(f"{algo}: Mean = {means[algo]:.2f}, Std = {stds[algo]:.2f}")
-        except:
-            means[algo] = 0
-            stds[algo] = 0
-    try:
-        F_stat, p_value = f_oneway(data["Baseline"], data["MOHHO"], data["PSO"], data["MOACO"])
-        logging.info(f"ANOVA: F = {F_stat:.2f}, p = {p_value:.4f}")
-    except:
-        logging.warning("Not enough data for ANOVA.")
-    return means, stds
 

@@ -7,8 +7,8 @@ from algorithmsS import MOHHO, PSO, MOACO
 from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed, 
                      compute_generational_distance, compute_spread, 
                      compute_spread_3d_by_projections, compute_coverage,
-                     statistical_analysis)
-from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs
+)
+from visualization import plot_gantt, plot_convergence, plot_all_pareto_graphs
 from objectives import multi_objective
 from ericsson_tasks import get_ericsson_tasks
 import utils
@@ -51,17 +51,16 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     ub_current = np.array([task["max"] for task in model.tasks])
     
     results = {
-        "MOHHO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [],
+        "MOHHO": {"normalized_hypervolume": [], "absolute_hypervolume": [],
                   "spread": [], "multi_objective_spread": [], "coverage": [], "coverage_pso": [],
                   "coverage_aco": [], "runtimes": []},
-        "PSO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [],
+        "PSO": {"normalized_hypervolume": [], "absolute_hypervolume": [],
                 "spread": [], "multi_objective_spread": [], "coverage": [], "coverage_hho": [],
                 "coverage_aco": [], "runtimes": []},
-        "MOACO": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [],
+        "MOACO": {"normalized_hypervolume": [], "absolute_hypervolume": [],
                   "spread": [], "multi_objective_spread": [], "coverage": [], "coverage_pso": [],
                   "coverage_hho": [], "runtimes": []},
-        "Baseline": {"makespan": []},
-        "NSGAII": {"best_makespan": [], "normalized_hypervolume": [], "absolute_hypervolume": [],
+        "NSGAII": {"normalized_hypervolume": [], "absolute_hypervolume": [],
                    "spread": [], "multi_objective_spread": [], "coverage": [], "runtimes": []}
     }
     archives_all: Dict[str, List[List[Tuple[np.ndarray, np.ndarray]]]] = {
@@ -69,8 +68,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     }
     base_schedules = []
     convergence_curves = {"MOHHO": [], "PSO": [], "MOACO": [], "NSGAII": []}
-    base_schedule, base_ms = model.baseline_allocation()
-    results["Baseline"]["makespan"].append(base_ms)
+    base_schedule, _ = model.baseline_allocation()
     base_schedules.append(base_schedule)
 
     time_limit_formated = utils.seconds_to_hms(time_limit)
@@ -104,8 +102,8 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             start_time = time.time()
             _ = optimizer.run(max_iter=iterrations, time_limit=time_limit)
             runtime = time.time() - start_time
-            results["PSO"]["runtimes"].append(runtime)
             archive_pso = optimizer.archive
+            results["PSO"]["runtimes"].append(runtime)
             archives_all["PSO"].append(archive_pso)
             algo_bar.write("PSO Done")
             algo_bar.update(1)
@@ -162,17 +160,28 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
             archives_all["NSGAII"].append(archive_nsga)
             algo_bar.write("NSGA-II Done")
             algo_bar.update(1)
+            
             results["MOACO"]["coverage"].append(compute_coverage(archive_moaco, archive_hho + archive_pso + archive_nsga))
             results["MOHHO"]["coverage"].append(compute_coverage(archive_hho, archive_moaco + archive_pso + archive_nsga))
             results["PSO"]["coverage"].append(compute_coverage(archive_pso, archive_hho + archive_moaco + archive_nsga))
             results["NSGAII"]["coverage"].append(compute_coverage(archive_nsga, archive_hho + archive_moaco + archive_pso))
             
             results["MOACO"]["coverage_hho"].append(compute_coverage(archive_moaco, archive_hho))
-            results["MOHHO"]["coverage_aco"].append(compute_coverage(archive_hho, archive_moaco))
-            results["PSO"]["coverage_hho"].append(compute_coverage(archive_pso, archive_hho))
             results["MOACO"]["coverage_pso"].append(compute_coverage(archive_moaco, archive_pso))
+            results["MOACO"]["coverage_nsga"].append(compute_coverage(archive_moaco, archive_nsga))
+
+            results["MOHHO"]["coverage_aco"].append(compute_coverage(archive_hho, archive_moaco))
             results["MOHHO"]["coverage_pso"].append(compute_coverage(archive_hho, archive_pso))
+            results["MOHHO"]["coverage_nsga"].append(compute_coverage(archive_hho, archive_nsga))
+
             results["PSO"]["coverage_aco"].append(compute_coverage(archive_pso, archive_moaco))
+            results["PSO"]["coverage_hho"].append(compute_coverage(archive_pso, archive_hho))
+            results["PSO"]["coverage_nsga"].append(compute_coverage(archive_pso, archive_nsga))
+
+            results["NSGAII"]["coverage_hho"].append(compute_coverage(archive_nsga, archive_hho))
+            results["NSGAII"]["coverage_pso"].append(compute_coverage(archive_nsga, archive_pso))
+            results["NSGAII"]["coverage_aco"].append(compute_coverage(archive_nsga, archive_moaco))
+            
         
     fixed_ref = utils.compute_fixed_reference(archives_all)
     global_lower_bound = utils.compute_combined_ideal(archives_all)
@@ -219,7 +228,7 @@ if __name__ == '__main__':
     num_tasks = 10
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
-    TIME_LIMIT = 30  # seconds (1 minute per algorithm run)
+    TIME_LIMIT = 5  # seconds (1 minute per algorithm run)
     ericsson = False
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(
@@ -230,7 +239,7 @@ if __name__ == '__main__':
     with open('experiment_results.json', 'w') as f:
         json.dump(results, f, indent=4)
     
-    means, stds = statistical_analysis(results)
+    #means, stds = statistical_analysis(results)
     plot_convergence({alg: results[alg]["absolute_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]}, "Absolute Hypervolume (%)")
     plot_convergence({alg: results[alg]["normalized_hypervolume"] for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]}, "Normalized Hypervolume (%)")
     plot_convergence({alg: results[alg]["spread"] for alg in ["MOHHO", "PSO", "MOACO", "NSGAII"]}, "Spread (Diversity)")
@@ -255,7 +264,6 @@ if __name__ == '__main__':
     plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO", "NSGAII"], ['o', '^', 's', 'd'], ['blue', 'red', 'green', 'purple'], fixed_ref)
     
     last_baseline = base_schedules[-1]
-    last_makespan = results["Baseline"]["makespan"][-1]
-    plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
+    plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)")
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")

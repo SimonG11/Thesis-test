@@ -100,29 +100,6 @@ def plot_convergence(metrics_dict: dict, metric_name: str) -> None:
     plt.show()
 
 
-def plot_pareto_2d(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
-                   labels: List[str], markers: List[str], colors: List[str],
-                   ref_point: Optional[np.ndarray] = None) -> None:
-    """
-    Plot 2D Pareto fronts (Makespan vs. Total Cost).
-    
-    If ref_point is provided, it is plotted as a black 'x'.
-    """
-    plt.figure(figsize=(8, 6))
-    for archive, label, marker, color in zip(archives, labels, markers, colors):
-        if archive:
-            objs = np.array([entry[1] for entry in archive])
-            plt.scatter(objs[:, 0], objs[:, 1], c=color, marker=marker, s=80, edgecolor='k', label=label)
-    if ref_point is not None:
-        plt.scatter(ref_point[0], ref_point[1], c='black', marker='x', s=100, label='Fixed Reference')
-    plt.xlabel("Makespan (hours)")
-    plt.ylabel("Total Cost")
-    plt.title("2D Pareto Front (Makespan vs. Total Cost)")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
-
 def plot_pareto_3d_individual(archive: List[Tuple[np.ndarray, np.ndarray]],
                               label: str, marker: str, color: str,
                               plane_coeffs: Tuple[float, float, float],
@@ -153,7 +130,7 @@ def plot_pareto_3d_individual(archive: List[Tuple[np.ndarray, np.ndarray]],
         ax.scatter([fixed_ref[0]], [fixed_ref[1]], [-fixed_ref[2]],
                    c='black', marker='x', s=100, label='Fixed Reference')
     
-    ax.set_xlabel("Makespan (hours)")
+    ax.set_xlabel("Makespan (Days)")
     ax.set_ylabel("Total Cost")
     ax.set_zlabel("Average Utilization")
     ax.set_title(f"3D Pareto Front for {label} with Fitted Plane")
@@ -188,7 +165,7 @@ def plot_pareto_3d_combined(archives: List[List[Tuple[np.ndarray, np.ndarray]]],
         ax.scatter([fixed_ref[0]], [fixed_ref[1]], [-fixed_ref[2]],
                    c='black', marker='x', s=100, label='Fixed Reference')
     
-    ax.set_xlabel("Makespan (hours)")
+    ax.set_xlabel("Makespan (Days)")
     ax.set_ylabel("Total Cost")
     ax.set_zlabel("Average Utilization")
     ax.set_title("Combined 3D Pareto Front with Fitted Plane")
@@ -366,7 +343,7 @@ def plot_non_dominated_archives_3d(archives: List[List[Tuple[np.ndarray, np.ndar
         ax.scatter([fixed_ref[0]], [fixed_ref[1]], [-fixed_ref[2]], c='black', marker='x', s=100, label='Fixed Reference')
     
     # 7. Label axes and add title/legend.
-    ax.set_xlabel("Makespan (hours)")
+    ax.set_xlabel("Makespan (Days)")
     ax.set_ylabel("Total Cost")
     ax.set_zlabel("Resource Utilization")
     ax.set_title("Global Non-Dominated 3D Pareto Front by Algorithm")
