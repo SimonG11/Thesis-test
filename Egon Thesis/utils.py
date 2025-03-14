@@ -260,6 +260,14 @@ def update_archive_with_crowding(archive: List[Tuple[np.ndarray, np.ndarray]],
     return archive
 
 
+def remove_excess_solutions_with_crowding_distance(archive: List[Tuple[np.ndarray, np.ndarray]], max_archive_size: int = 50):
+    while len(archive) > max_archive_size:
+        distances = compute_crowding_distance(archive)
+        min_index = np.argmin(distances)
+        archive.pop(min_index)
+    return archive
+
+
 def get_global_non_dominated(solutions: List[Tuple[int, np.ndarray, np.ndarray]], 
                              epsilon: float = 1e-6) -> List[Tuple[int, np.ndarray, np.ndarray]]:
     """

@@ -8,9 +8,8 @@ from metrics import (normalized_hypervolume_fixed, absolute_hypervolume_fixed,
                      compute_generational_distance, compute_spread, 
                      compute_spread_3d_by_projections, compute_coverage,
                      statistical_analysis)
-from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs, plot_comparative_bar_chart, plot_aggregate_convergence
-from scipy.stats import f_oneway
-from objectives import objective_makespan, objective_total_cost, objective_neg_utilization, multi_objective
+from visualization import plot_gantt, plot_convergence, plot_pareto_2d, plot_all_pareto_graphs
+from objectives import multi_objective
 from ericsson_tasks import get_ericsson_tasks
 import utils
 import time
@@ -68,13 +67,12 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
     }
     base_schedules = []
     convergence_curves = {"MOHHO": [], "PSO": [], "MOACO": [], "NSGAII": []}
-
+    base_schedule, base_ms = model.baseline_allocation()
+    results["Baseline"]["makespan"].append(base_ms)
+    base_schedules.append(base_schedule)
     # Outer progress bar: overall experiment runs
     for run in tqdm(range(runs), desc="Experiment Runs", position=0, leave=True):
         tqdm.write(f"Starting run {run+1}/{runs}...")
-        base_schedule, base_ms = model.baseline_allocation()
-        results["Baseline"]["makespan"].append(base_ms)
-        base_schedules.append(base_schedule)
         
         # Create an inner progress bar for the four algorithm executions in this run.
         with tqdm(total=4, desc="Algorithms", position=1, leave=False) as algo_bar:
@@ -171,6 +169,7 @@ def run_experiments(runs: int = 1, use_random_instance: bool = False, num_tasks:
                            verbose=False)
             nsga_runtime = time.time() - start_time
             archive_nsga = [(sol, obj) for sol, obj in zip(res.X, res.F)]
+            archive_nsga = utils.remove_excess_solutions_with_crowding_distance(archive=archive_nsga, max_archive_size=100)
             best_ms_nsga = min(archive_nsga, key=lambda entry: entry[1][0])[1][0] if archive_nsga else None
             results["NSGAII"]["runtimes"].append(nsga_runtime)
             results["NSGAII"]["best_makespan"].append(best_ms_nsga)
@@ -221,10 +220,10 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     runs = 2
     use_random_instance = True
-    num_tasks = 50
+    num_tasks = 10
     POPULATION = 100
     ITERATIONS = 500  # Maximum iterations (may not be reached if time_limit is hit)
-    TIME_LIMIT = 180  # seconds (1 minute per algorithm run)
+    TIME_LIMIT = 10  # seconds (1 minute per algorithm run)
     ericsson = False
 
     results, archives_all, base_schedules, convergence_curves = run_experiments(
@@ -248,19 +247,21 @@ if __name__ == '__main__':
     fixed_ref = utils.compute_fixed_reference(archives_all)
     logging.info(f"Fixed hypervolume reference point: {fixed_ref}")
     archives = []
+
+
     for alg in archives_all:
         temp_archive = []
         for run in archives_all[alg]:
             for sol, obj in run:
                 temp_archive = utils.update_archive_with_crowding(temp_archive, (sol, obj))
         archives.append(temp_archive)
+    
+
     plot_pareto_2d(archives, ["MOHHO", "PSO", "MOACO", "NSGAII"], ['o', '^', 's', 'd'], ['blue', 'red', 'green', 'purple'], ref_point=fixed_ref)
     plot_all_pareto_graphs(archives, ["MOHHO", "PSO", "MOACO", "NSGAII"], ['o', '^', 's', 'd'], ['blue', 'red', 'green', 'purple'], fixed_ref)
     
     last_baseline = base_schedules[-1]
     last_makespan = results["Baseline"]["makespan"][-1]
     plot_gantt(last_baseline, f"Baseline Schedule (Greedy Allocation)\nMakespan: {last_makespan:.2f} hrs")
-    
-    plot_aggregate_convergence(convergence_curves, "Aggregate Convergence Curves for All Algorithms")
     
     logging.info("Experiment complete. Results saved to 'experiment_results.json'.")

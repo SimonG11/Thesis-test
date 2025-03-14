@@ -38,7 +38,7 @@ from metrics import absolute_hypervolume_fixed
 # ------------------------
 
 def grid_search_mohho(param_grid: Dict[str, List[Any]], runs: int = 5,
-                      use_random_instance: bool = False, num_tasks: int = 20,
+                      use_random_instance: bool = False, base_num_tasks: int = 20,
                       time_limit: float = None) -> Tuple[Dict[str, Any], float, Dict[str, float]]:
     """
     Grid search for MOHHO. Expected grid parameters:
@@ -58,7 +58,7 @@ def grid_search_mohho(param_grid: Dict[str, List[Any]], runs: int = 5,
         params = dict(zip(param_grid.keys(), combination))
         hv_values = []
         archives_list = []
-        
+        num_tasks = base_num_tasks
         # Inner progress bar for runs (this bar clears when done)
         for run in tqdm(range(runs), desc="Runs", position=1, leave=True):
             utils.initialize_seed(14 + run)
@@ -66,6 +66,7 @@ def grid_search_mohho(param_grid: Dict[str, List[Any]], runs: int = 5,
             workers = {"Developer": 10, "Manager": 2, "Tester": 3}
             worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
             tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
+            num_tasks += 10
             model = RCPSPModel(tasks, workers, worker_cost)
             dim = len(model.tasks)
             lb_current = np.array([task["min"] for task in model.tasks])
@@ -105,7 +106,7 @@ def grid_search_mohho(param_grid: Dict[str, List[Any]], runs: int = 5,
 
 
 def grid_search_pso(param_grid: Dict[str, List[Any]], runs: int = 5,
-                    use_random_instance: bool = False, num_tasks: int = 20,
+                    use_random_instance: bool = False, base_num_tasks: int = 20,
                     time_limit: float = None) -> Tuple[Dict[str, Any], float, Dict[str, float]]:
     """
     Grid search for PSO with a similar multi-level progress bar structure.
@@ -116,11 +117,13 @@ def grid_search_pso(param_grid: Dict[str, List[Any]], runs: int = 5,
         params = dict(zip(param_grid.keys(), combination))
         hv_values = []
         archives_list = []
+        num_tasks = base_num_tasks
         for run in tqdm(range(runs), desc="Runs", position=1, leave=False):
             utils.initialize_seed(14 + run)
             workers = {"Developer": 10, "Manager": 2, "Tester": 3}
             worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
             tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
+            num_tasks += 10
             model = RCPSPModel(tasks, workers, worker_cost)
             dim = len(model.tasks)
             lb_current = np.array([task["min"] for task in model.tasks])
@@ -155,7 +158,7 @@ def grid_search_pso(param_grid: Dict[str, List[Any]], runs: int = 5,
 
 
 def grid_search_moaco(param_grid: Dict[str, List[Any]], runs: int = 5,
-                      use_random_instance: bool = False, num_tasks: int = 20,
+                      use_random_instance: bool = False, base_num_tasks: int = 20,
                       time_limit: float = None) -> Tuple[Dict[str, Any], float, Dict[str, float]]:
     """
     Grid search for MOACO with a similar multi-level progress bar structure.
@@ -166,11 +169,13 @@ def grid_search_moaco(param_grid: Dict[str, List[Any]], runs: int = 5,
         params = dict(zip(param_grid.keys(), combination))
         hv_values = []
         archives_list = []
+        num_tasks = base_num_tasks
         for run in tqdm(range(runs), desc="Runs", position=1, leave=False):
             utils.initialize_seed(14 + run)
             workers = {"Developer": 10, "Manager": 2, "Tester": 3}
             worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
             tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
+            num_tasks += 10
             model = RCPSPModel(tasks, workers, worker_cost)
             dim = len(model.tasks)
             lb_current = np.array([task["min"] for task in model.tasks])
