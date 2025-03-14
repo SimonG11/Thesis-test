@@ -35,6 +35,23 @@ def absolute_hypervolume_fixed(archive: List[Tuple[np.ndarray, np.ndarray]],
     samples = np.random.uniform(low=lb, high=ub, size=(num_samples, len(ub)))
     objs = np.array([entry[1] for entry in archive])
     dominated_count = sum(1 for sample in samples if any(np.all(sol <= sample) for sol in objs))
+    return (dominated_count / num_samples) * np.prod(ub - lb)
+
+
+def absolute_hypervolume_fixed_perc(archive: List[Tuple[np.ndarray, np.ndarray]],
+                               reference_point: np.ndarray,
+                               global_lower_bound: np.ndarray,
+                               num_samples: int = 1000) -> float:
+    """
+    Approximate the absolute hypervolume using a fixed global lower bound.
+    """
+    if not archive:
+        return 0.0
+    lb = global_lower_bound
+    ub = reference_point
+    samples = np.random.uniform(low=lb, high=ub, size=(num_samples, len(ub)))
+    objs = np.array([entry[1] for entry in archive])
+    dominated_count = sum(1 for sample in samples if any(np.all(sol <= sample) for sol in objs))
     return (dominated_count / num_samples) * 100
 
 

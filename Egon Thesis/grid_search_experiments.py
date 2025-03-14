@@ -61,12 +61,11 @@ def grid_search_mohho(param_grid: Dict[str, List[Any]], runs: int = 5,
         num_tasks = base_num_tasks
         # Inner progress bar for runs (this bar clears when done)
         for run in tqdm(range(runs), desc="Runs", position=1, leave=True):
-            utils.initialize_seed(14 + run)
+            utils.initialize_seed(14)
             # Set up tasks, workers, and model (as in experiment.py)
             workers = {"Developer": 10, "Manager": 2, "Tester": 3}
             worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
             tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
-            num_tasks += 10
             model = RCPSPModel(tasks, workers, worker_cost)
             dim = len(model.tasks)
             lb_current = np.array([task["min"] for task in model.tasks])
@@ -119,11 +118,10 @@ def grid_search_pso(param_grid: Dict[str, List[Any]], runs: int = 5,
         archives_list = []
         num_tasks = base_num_tasks
         for run in tqdm(range(runs), desc="Runs", position=1, leave=False):
-            utils.initialize_seed(14 + run)
+            utils.initialize_seed(14)
             workers = {"Developer": 10, "Manager": 2, "Tester": 3}
             worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
             tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
-            num_tasks += 10
             model = RCPSPModel(tasks, workers, worker_cost)
             dim = len(model.tasks)
             lb_current = np.array([task["min"] for task in model.tasks])
@@ -171,11 +169,10 @@ def grid_search_moaco(param_grid: Dict[str, List[Any]], runs: int = 5,
         archives_list = []
         num_tasks = base_num_tasks
         for run in tqdm(range(runs), desc="Runs", position=1, leave=False):
-            utils.initialize_seed(14 + run)
+            utils.initialize_seed(14)
             workers = {"Developer": 10, "Manager": 2, "Tester": 3}
             worker_cost = {"Developer": 50, "Manager": 75, "Tester": 40}
             tasks = generate_random_tasks(num_tasks, workers) if use_random_instance else get_default_tasks()
-            num_tasks += 10
             model = RCPSPModel(tasks, workers, worker_cost)
             dim = len(model.tasks)
             lb_current = np.array([task["min"] for task in model.tasks])
@@ -216,10 +213,10 @@ if __name__ == '__main__':
                         format='%(asctime)s - %(levelname)s - %(message)s')
     # Settings for grid search experiments
     runs = 5
-    use_random_instance = False
-    num_tasks = 20
+    use_random_instance = True
+    num_tasks = 50
     # Set a fixed time limit per run (e.g., 300 seconds = 5 minutes)
-    TIME_LIMIT = 10
+    TIME_LIMIT = 30
 
     # Hyperparameter Grids for RCPSP Scheduling Problems
 
@@ -227,8 +224,8 @@ if __name__ == '__main__':
     #   - Population: 50–100 hawks (Huang et al., 2016: https://doi.org/10.1016/j.procs.2016.07.034)
     #   - Iterations: 200–500 iterations (Huang et al., 2016: https://doi.org/10.1016/j.procs.2016.07.034)
     mohho_grid = {
-        "population": [50, 100],
-        "iter": [200, 500]
+        "population": [100, 50, 150],
+        "iter": [500]
     }
     
     # PSO (Particle Swarm Optimization):
@@ -246,7 +243,7 @@ if __name__ == '__main__':
         "disturbance_rate_min": [0.05, 0.1],
         "disturbance_rate_max": [0.1, 0.15],
         "jump_interval": [50, 100],
-        "max_iter": [200, 500]
+        "max_iter": [500]
     }
     
     # MOACO (Multi-Objective Ant Colony Optimization):
@@ -258,10 +255,10 @@ if __name__ == '__main__':
     #   - colony_count: 1 or 2 colonies (Iredi et al., 2001: https://doi.org/10.1109/CEC.2001.944994)
     moaco_grid = {
         "ant_count": [20, 50],
-        "max_iter": [200, 500],
+        "max_iter": [500],
         "alpha": [1.0, 1.5],
         "beta": [2.0, 2.5],
-        "evaporation_rate": [0.1, 0.2, 0.3],
+        "evaporation_rate": [0.1, 0.3],
         "colony_count": [1, 2]
     }
 
@@ -269,7 +266,7 @@ if __name__ == '__main__':
     best_mohho, best_mohho_hv, mohho_summary = grid_search_mohho(
         mohho_grid, runs=runs,
         use_random_instance=use_random_instance,
-        num_tasks=num_tasks,
+        base_num_tasks=num_tasks,
         time_limit=TIME_LIMIT
     )
     # Uncomment below to run for PSO and MOACO as needed:
